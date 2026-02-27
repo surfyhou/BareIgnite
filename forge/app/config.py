@@ -18,6 +18,10 @@ class Settings:
         self.data_dir: Path = Path(
             os.environ.get("FORGE_DATA_DIR", "/app/data")
         )
+        # BareIgnite project root (for packaging base files)
+        self.bareignite_root: Path = Path(
+            os.environ.get("BAREIGNITE_ROOT", str(self.data_dir.parent.parent))
+        )
         self.builds_dir: Path = self.output_dir / "builds"
 
         # Sub-directories for cached content

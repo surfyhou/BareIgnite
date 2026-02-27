@@ -295,9 +295,7 @@ class Packager:
 
         Includes scripts, templates, configs, PXE files, and tools.
         """
-        # The BareIgnite project root is at /app/.. in the container context,
-        # or we look for a known layout relative to the data directory
-        bareignite_root = settings.data_dir.parent
+        bareignite_root = settings.bareignite_root
 
         # Directories to include in the base
         base_dirs = {

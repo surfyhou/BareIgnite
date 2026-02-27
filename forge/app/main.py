@@ -14,6 +14,7 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from api.builds import router as builds_router
@@ -85,6 +86,11 @@ app.include_router(media_router)
 # Mount static files for Web UI (if directory exists and has files)
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists() and any(static_dir.iterdir()):
+    # Serve index.html at root
+    @app.get("/", include_in_schema=False)
+    async def serve_root():
+        return FileResponse(str(static_dir / "index.html"))
+
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
     logger.info("Static files mounted from %s", static_dir)
 
