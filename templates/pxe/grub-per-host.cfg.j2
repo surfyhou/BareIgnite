@@ -1,0 +1,32 @@
+# BareIgnite GRUB per-host config for {{ hostname }} ({{ os_id }})
+# Generated -- do not edit manually
+# Boot mode: UEFI ({{ arch }})
+# {{ ansible_managed }}
+
+set timeout=5
+set default=0
+
+{% if os_family == "rhel" %}
+menuentry 'BareIgnite: Install {{ os_id }} on {{ hostname }}' {
+    linuxefi /{{ kernel_path }} inst.ks={{ ks_url }} inst.repo={{ repo_url }} ip=dhcp quiet
+    initrdefi /{{ initrd_path }}
+}
+{% elif os_family == "debian" %}
+menuentry 'BareIgnite: Install {{ os_id }} on {{ hostname }}' {
+    linuxefi /{{ kernel_path }} ip=dhcp cloud-config-url=/dev/null autoinstall ds=nocloud-net\;s={{ ks_url }}
+    initrdefi /{{ initrd_path }}
+}
+{% elif os_family == "esxi" %}
+menuentry 'BareIgnite: Install {{ os_id }} on {{ hostname }}' {
+    chainloader /{{ kernel_path }} -c {{ ks_url }}
+}
+{% else %}
+menuentry 'BareIgnite: Install {{ os_id }} on {{ hostname }}' {
+    linuxefi /{{ kernel_path }} {{ boot_params }}
+    initrdefi /{{ initrd_path }}
+}
+{% endif %}
+
+menuentry 'Boot from local disk' {
+    exit
+}

@@ -1,0 +1,20 @@
+---
+# security.yml -- Security hardening playbook
+#
+# Applies security baseline to all servers:
+#   - SSH hardening (key-only auth, port change, root login control)
+#   - Firewall configuration (firewalld for RHEL, ufw for Ubuntu)
+#   - SELinux / AppArmor settings
+#   - Audit logging
+#   - Service hardening
+
+- name: Security hardening
+  hosts: all
+  gather_facts: true
+  tags:
+    - security
+
+  roles:
+    - role: security
+      tags:
+        - security

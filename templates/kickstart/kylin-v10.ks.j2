@@ -1,0 +1,181 @@
+# BareIgnite: Kylin V10 Server Kickstart Template
+# Template: kylin-v10.ks.j2
+#
+# Kylin V10 is based on CentOS 8 / RHEL 8 and uses the Anaconda installer.
+# Compatible with standard RHEL 8 kickstart syntax with Kylin-specific
+# adjustments for repos, packages, and post-install configuration.
+#
+# Supported architectures: x86_64, aarch64 (Kunpeng 920)
+# Note for ARM64/Kunpeng: partition sizes MUST be integers (no decimals)
+
+# Installation method
+install
+{{ 'url --url="http://' + control_ip + '/images/kylin/v10/' + arch + '/"' }}
+{{ 'repo --name="Kylin-V10-AppStream" --baseurl="http://' + control_ip + '/images/kylin/v10/' + arch + '/AppStream"' }}
+
+# System language, keyboard, and timezone
+lang {{ locale | default('zh_CN.UTF-8') }}
+keyboard {{ keyboard | default('us') }}
+timezone {{ timezone | default('Asia/Shanghai') }} --utc
+
+# Network configuration during install (DHCP on PXE NIC)
+network --bootproto=dhcp --device={{ pxe_mac }} --activate --onboot=yes
+network --hostname={{ hostname }}
+
+# Root password
+rootpw --iscrypted {{ root_password }}
+
+# Authentication and security
+authselect select sssd with-mkhomedir --force
+selinux --{{ selinux | default('enforcing') }}
+firewall --enabled --ssh
+
+# Bootloader
+bootloader --append="crashkernel=auto" --location=mbr
+
+# Clear all existing partitions
+clearpart --all --initlabel
+zerombr
+
+# Disk partitioning (included from partition scheme template)
+{% if partition_template is defined %}
+{% include partition_template %}
+{% else %}
+# Default partitioning for Kylin V10
+autopart --type=lvm
+{% endif %}
+
+# Skip X Window System
+skipx
+
+# Agree to EULA
+eula --agreed
+
+# Reboot after installation
+reboot
+
+# ============================================================
+# Package selection
+# ============================================================
+%packages
+@core
+@base
+# Kylin-specific packages
+kylin-release
+kylin-repos
+# System utilities
+curl
+wget
+net-tools
+vim-enhanced
+bash-completion
+openssh-server
+openssh-clients
+python3
+chrony
+# Chinese locale support
+langpacks-zh_CN
+glibc-langpack-zh
+# Hardware and system monitoring
+lm_sensors
+dmidecode
+smartmontools
+pciutils
+# LVM tools
+lvm2
+# Exclude unnecessary packages
+-iwl*-firmware
+-plymouth
+%end
+
+# ============================================================
+# Pre-install script
+# ============================================================
+%pre --log=/tmp/bareignite-pre.log
+#!/bin/bash
+# Kylin V10 pre-install script
+
+# For ARM64 (Kunpeng), sometimes DHCP needs explicit restart
+{% if arch == 'aarch64' %}
+# Workaround: re-acquire DHCP lease on Kunpeng hardware
+dhclient -r 2>/dev/null || true
+sleep 2
+dhclient 2>/dev/null || true
+{% endif %}
+
+echo "BareIgnite pre-install for {{ hostname }} (Kylin V10 {{ arch }})"
+%end
+
+# ============================================================
+# Post-install script
+# ============================================================
+%post --log=/root/bareignite-postinstall.log
+#!/bin/bash
+echo "=== BareIgnite Post-Install: {{ hostname }} (Kylin V10) ==="
+echo "Start time: $(date)"
+
+# --- Install SSH keys ---
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
+{% for key in ssh_keys | default([]) %}
+echo "{{ key }}" >> /root/.ssh/authorized_keys
+{% endfor %}
+{% if ssh_keys | default([]) | length > 0 %}
+chmod 600 /root/.ssh/authorized_keys
+restorecon -R /root/.ssh 2>/dev/null || true
+{% endif %}
+
+# --- Configure NTP (chrony) ---
+cat > /etc/chrony.conf <<'CHRONY_EOF'
+{% for ntp_server in ntp_servers | default(['ntp.aliyun.com', 'ntp.tencent.com']) %}
+server {{ ntp_server }} iburst
+{% endfor %}
+driftfile /var/lib/chrony/drift
+makestep 1.0 3
+rtcsync
+logdir /var/log/chrony
+CHRONY_EOF
+systemctl enable chronyd
+
+# --- Configure DNS resolvers ---
+{% if nameservers is defined and nameservers | length > 0 %}
+cat > /etc/resolv.conf <<'DNS_EOF'
+{% for ns in nameservers %}
+nameserver {{ ns }}
+{% endfor %}
+DNS_EOF
+{% endif %}
+
+# --- Kylin V10 specific configuration ---
+# Ensure Kylin system identification is correct
+if [ -f /etc/kylin-release ]; then
+    echo "Kylin release: $(cat /etc/kylin-release)"
+fi
+
+# Enable and configure Kylin security module (if present)
+if systemctl list-unit-files | grep -q kysec; then
+    systemctl enable kysec || true
+fi
+
+# --- Set Chinese locale defaults if configured ---
+{% if locale is defined and locale.startswith('zh_CN') %}
+# Ensure Chinese locale is properly configured
+localectl set-locale LANG={{ locale }}
+{% endif %}
+
+# --- Enable essential services ---
+systemctl enable sshd
+systemctl enable chronyd
+systemctl enable NetworkManager
+
+# --- Disable unnecessary services ---
+systemctl disable kdump 2>/dev/null || true
+systemctl disable postfix 2>/dev/null || true
+
+# --- Signal completion to BareIgnite control node ---
+echo "Sending callback to control node..."
+curl -s "http://{{ control_ip }}:{{ callback_port | default('8888') }}/callback?server={{ hostname }}&status=success" || \
+    wget -q -O /dev/null "http://{{ control_ip }}:{{ callback_port | default('8888') }}/callback?server={{ hostname }}&status=success" || \
+    echo "WARNING: Failed to send callback"
+
+echo "=== BareIgnite Post-Install Complete: $(date) ==="
+%end

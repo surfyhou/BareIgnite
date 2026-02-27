@@ -1,0 +1,139 @@
+---
+# database/tasks/main.yml -- Database server preparation
+#
+# Prepares servers for database workloads (not the DB itself):
+#   - Kernel parameter tuning (shared memory, semaphores)
+#   - ulimit configuration for database user
+#   - Data directory creation
+#   - I/O scheduler optimization
+#   - Transparent Huge Pages management
+
+# --- Kernel parameters for database workloads ---
+
+- name: Apply database-optimized sysctl parameters
+  sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-bareignite-database.conf
+    reload: true
+    state: present
+  loop: "{{ database_sysctl_params | dict2items }}"
+
+# --- Database user and group ---
+
+- name: Create database group
+  group:
+    name: "{{ database_group }}"
+    gid: "{{ database_gid | default(omit) }}"
+    state: present
+
+- name: Create database user
+  user:
+    name: "{{ database_user }}"
+    uid: "{{ database_uid | default(omit) }}"
+    group: "{{ database_group }}"
+    home: "{{ database_home_dir }}"
+    shell: /bin/bash
+    create_home: true
+    state: present
+
+# --- ulimit configuration ---
+
+- name: Configure ulimits for database user
+  template:
+    src: database-limits.conf.j2
+    dest: /etc/security/limits.d/99-bareignite-database.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+# --- Data directories ---
+
+- name: Create database data directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ database_user }}"
+    group: "{{ database_group }}"
+    mode: "0750"
+  loop: "{{ database_data_dirs }}"
+
+# --- I/O scheduler ---
+
+- name: Detect data disk devices
+  set_fact:
+    database_disk_devices: "{{ database_disk_devices | default(database_default_disk_devices) }}"
+
+- name: Set I/O scheduler for data disks
+  shell: |
+    for dev in {{ database_disk_devices | join(' ') }}; do
+      dev_name=$(basename "$dev")
+      if [ -f "/sys/block/${dev_name}/queue/scheduler" ]; then
+        echo "{{ database_io_scheduler }}" > "/sys/block/${dev_name}/queue/scheduler"
+      fi
+    done
+  changed_when: true
+  failed_when: false
+
+- name: Persist I/O scheduler via udev rule
+  copy:
+    content: |
+      # BareIgnite database I/O scheduler rule
+      ACTION=="add|change", KERNEL=="sd[a-z]|nvme[0-9]*", ATTR{queue/scheduler}="{{ database_io_scheduler }}"
+    dest: /etc/udev/rules.d/60-bareignite-io-scheduler.rules
+    owner: root
+    group: root
+    mode: "0644"
+
+# --- Transparent Huge Pages ---
+
+- name: Disable Transparent Huge Pages (recommended for most databases)
+  block:
+    - name: Disable THP at runtime
+      shell: |
+        echo never > /sys/kernel/mm/transparent_hugepage/enabled
+        echo never > /sys/kernel/mm/transparent_hugepage/defrag
+      changed_when: true
+      failed_when: false
+
+    - name: Persist THP disable via systemd service
+      copy:
+        content: |
+          [Unit]
+          Description=Disable Transparent Huge Pages (BareIgnite)
+          DefaultDependencies=no
+          After=sysinit.target local-fs.target
+          Before=basic.target
+
+          [Service]
+          Type=oneshot
+          ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled'
+          ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/defrag'
+
+          [Install]
+          WantedBy=basic.target
+        dest: /etc/systemd/system/disable-thp.service
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Enable disable-thp service
+      systemd:
+        name: disable-thp
+        enabled: true
+        daemon_reload: true
+  when: database_disable_thp | bool
+
+# --- Install database prerequisites ---
+
+- name: Install database prerequisite packages (RedHat)
+  yum:
+    name: "{{ database_prereq_packages_rhel }}"
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Install database prerequisite packages (Debian)
+  apt:
+    name: "{{ database_prereq_packages_debian }}"
+    state: present
+  when: ansible_os_family == "Debian"

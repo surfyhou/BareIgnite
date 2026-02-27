@@ -1,0 +1,169 @@
+#version=RHEL9
+# BareIgnite kickstart for {{ hostname }} ({{ os_id }})
+# Generated -- do not edit manually
+# {{ ansible_managed }}
+
+# === Install method ===
+text
+url --url={{ http_server }}/images/{{ os_id }}/
+
+# === Localization ===
+lang {{ locale }}
+keyboard --vckeymap=us --xlayouts='us'
+timezone {{ timezone }} --utc
+
+# === Authentication ===
+rootpw --iscrypted {{ root_password }}
+
+# === Network (PXE NIC only during install) ===
+network --bootproto=dhcp --device={{ pxe_mac }} --activate --onboot=yes
+network --hostname={{ hostname }}
+
+# === Security ===
+firewall --disabled
+selinux --permissive
+
+# === Bootloader ===
+{% if boot_mode == "uefi" %}
+bootloader --location=mbr --append="crashkernel=auto" --boot-drive=sda
+{% else %}
+bootloader --location=mbr --append="crashkernel=auto"
+{% endif %}
+
+# === Disk partitioning ===
+{% if partition_scheme == "generic" %}
+# Generic: automatic LVM partitioning
+clearpart --all --initlabel
+autopart --type=lvm
+{% elif partition_scheme == "database" %}
+# Database server partitioning
+clearpart --all --initlabel
+{% if boot_mode == "uefi" %}
+part /boot/efi --fstype=efi --size=600
+{% endif %}
+part /boot --fstype=xfs --size=1024
+part pv.01 --size=1 --grow
+volgroup vg_data pv.01
+logvol /       --vgname=vg_data --name=lv_root   --fstype=xfs --size=51200
+logvol /var    --vgname=vg_data --name=lv_var    --fstype=xfs --size=20480
+logvol /var/lib/pgsql --vgname=vg_data --name=lv_pgdata --fstype=xfs --size=102400 --grow
+logvol /tmp    --vgname=vg_data --name=lv_tmp    --fstype=xfs --size=10240
+logvol swap    --vgname=vg_data --name=lv_swap   --size=16384
+{% elif partition_scheme == "appserver" %}
+# Application server partitioning
+clearpart --all --initlabel
+{% if boot_mode == "uefi" %}
+part /boot/efi --fstype=efi --size=600
+{% endif %}
+part /boot --fstype=xfs --size=1024
+part pv.01 --size=1 --grow
+volgroup vg_app pv.01
+logvol /       --vgname=vg_app --name=lv_root   --fstype=xfs --size=51200
+logvol /opt    --vgname=vg_app --name=lv_opt    --fstype=xfs --size=51200 --grow
+logvol /var    --vgname=vg_app --name=lv_var    --fstype=xfs --size=20480
+logvol /var/log --vgname=vg_app --name=lv_varlog --fstype=xfs --size=20480
+logvol /tmp    --vgname=vg_app --name=lv_tmp    --fstype=xfs --size=10240
+logvol swap    --vgname=vg_app --name=lv_swap   --size=16384
+{% elif partition_scheme == "hypervisor" %}
+# Hypervisor partitioning (minimal)
+clearpart --all --initlabel
+{% if boot_mode == "uefi" %}
+part /boot/efi --fstype=efi --size=600
+{% endif %}
+part /boot --fstype=xfs --size=1024
+part pv.01 --size=1 --grow
+volgroup vg_sys pv.01
+logvol / --vgname=vg_sys --name=lv_root --fstype=xfs --size=51200 --grow
+logvol swap --vgname=vg_sys --name=lv_swap --size=8192
+{% elif partition_scheme == "storage" %}
+# Storage server partitioning (minimal root, large /data)
+clearpart --all --initlabel
+{% if boot_mode == "uefi" %}
+part /boot/efi --fstype=efi --size=600
+{% endif %}
+part /boot --fstype=xfs --size=1024
+part pv.01 --size=1 --grow
+volgroup vg_store pv.01
+logvol /     --vgname=vg_store --name=lv_root --fstype=xfs --size=30720
+logvol /data --vgname=vg_store --name=lv_data --fstype=xfs --size=51200 --grow
+logvol swap  --vgname=vg_store --name=lv_swap --size=8192
+{% else %}
+# Custom/unknown scheme -- fall back to autopart
+clearpart --all --initlabel
+autopart --type=lvm
+{% endif %}
+
+# === Package selection ===
+%packages
+@core
+curl
+wget
+python3
+openssh-server
+openssh-clients
+vim-enhanced
+net-tools
+bash-completion
+{% for pkg in extra_packages %}
+{{ pkg }}
+{% endfor %}
+%end
+
+# === Post-install scripts ===
+%post --log=/root/bareignite-postinstall.log
+#!/bin/bash
+echo "BareIgnite post-install starting for {{ hostname }}..."
+
+# --- Configure SSH authorized keys ---
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
+{% for key in ssh_keys %}
+echo "{{ key }}" >> /root/.ssh/authorized_keys
+{% endfor %}
+{% if ssh_keys | length > 0 %}
+chmod 600 /root/.ssh/authorized_keys
+restorecon -Rv /root/.ssh/ 2>/dev/null || true
+{% endif %}
+
+# --- Ensure SSH is enabled ---
+systemctl enable sshd
+
+# --- Disable firstboot ---
+systemctl disable initial-setup 2>/dev/null || true
+systemctl disable firstboot 2>/dev/null || true
+
+# --- Set hostname ---
+hostnamectl set-hostname {{ hostname }}
+
+{% if ntp_servers | length > 0 %}
+# --- Configure NTP/Chrony ---
+cat > /etc/chrony.conf <<'CHRONYEOF'
+{% for ntp in ntp_servers %}
+server {{ ntp }} iburst
+{% endfor %}
+driftfile /var/lib/chrony/drift
+makestep 1.0 3
+rtcsync
+CHRONYEOF
+systemctl enable chronyd
+{% endif %}
+
+{% if nameservers | length > 0 %}
+# --- Configure DNS resolvers ---
+cat > /etc/resolv.conf <<'DNSEOF'
+{% for ns in nameservers %}
+nameserver {{ ns }}
+{% endfor %}
+DNSEOF
+{% endif %}
+
+# --- Signal completion to control node ---
+echo "Sending callback to http://{{ control_ip }}:{{ callback_port }}/..."
+curl -sf "http://{{ control_ip }}:{{ callback_port }}/callback?server={{ hostname }}&status=success" \
+    || wget -q -O /dev/null "http://{{ control_ip }}:{{ callback_port }}/callback?server={{ hostname }}&status=success" \
+    || echo "WARNING: callback failed (server may be unreachable)"
+
+echo "BareIgnite post-install completed for {{ hostname }}"
+%end
+
+# === Reboot after install ===
+reboot --eject

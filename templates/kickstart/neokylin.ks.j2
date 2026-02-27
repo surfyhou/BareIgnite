@@ -1,0 +1,203 @@
+# BareIgnite: NeoKylin Server Kickstart Template
+# Template: neokylin.ks.j2
+#
+# NeoKylin (中标麒麟/中科方德) is based on RHEL 6/7 depending on the version.
+# Uses the Anaconda installer with standard kickstart syntax.
+# This template targets NeoKylin 6.5+ / 7.0+ (RHEL 7-based variants).
+#
+# Supported architectures: x86_64, aarch64
+# Note: Older NeoKylin versions may have slightly different package names.
+
+# Installation method
+install
+{{ 'url --url="http://' + control_ip + '/images/neokylin/' + arch + '/"' }}
+
+# System language, keyboard, and timezone
+# Default to Chinese locale for NeoKylin deployments
+lang {{ locale | default('zh_CN.UTF-8') }}
+keyboard {{ keyboard | default('us') }}
+timezone {{ timezone | default('Asia/Shanghai') }} --utc
+
+# Network configuration during install (DHCP on PXE NIC)
+network --bootproto=dhcp --device={{ pxe_mac }} --activate --onboot=yes
+network --hostname={{ hostname }}
+
+# Root password
+rootpw --iscrypted {{ root_password }}
+
+# Authentication
+authconfig --enableshadow --passalgo=sha512
+
+# Security
+selinux --{{ selinux | default('enforcing') }}
+firewall --enabled --ssh
+
+# Bootloader configuration
+bootloader --append="crashkernel=auto" --location=mbr
+
+# Clear all existing partitions
+clearpart --all --initlabel
+zerombr
+
+# Disk partitioning (included from partition scheme template)
+{% if partition_template is defined %}
+{% include partition_template %}
+{% else %}
+# Default partitioning for NeoKylin
+# NeoKylin recommends separate /boot and LVM for remaining space
+part /boot --fstype="xfs" --size=1024
+{% if boot_mode | default('uefi') == 'uefi' %}
+part /boot/efi --fstype="efi" --size=512
+{% endif %}
+part pv.01 --size=1 --grow
+volgroup vg_system pv.01
+logvol / --fstype="xfs" --name=lv_root --vgname=vg_system --size=51200
+logvol swap --fstype="swap" --name=lv_swap --vgname=vg_system --size=8192
+logvol /var --fstype="xfs" --name=lv_var --vgname=vg_system --size=20480
+logvol /home --fstype="xfs" --name=lv_home --vgname=vg_system --size=1 --grow
+{% endif %}
+
+# Skip X Window System
+skipx
+
+# Agree to EULA (if applicable)
+eula --agreed
+
+# Reboot after installation
+reboot
+
+# ============================================================
+# Package selection
+# ============================================================
+%packages
+@core
+@base
+# System utilities
+curl
+wget
+net-tools
+vim-enhanced
+bash-completion
+openssh-server
+openssh-clients
+python
+python3
+ntp
+# Chinese locale support
+kde-l10n-Chinese
+fonts-chinese
+# NeoKylin-specific packages (if available in repo)
+# neokylin-release (provided by the base ISO)
+# Hardware and system monitoring
+lm_sensors
+dmidecode
+smartmontools
+pciutils
+# LVM tools
+lvm2
+# Network tools
+traceroute
+bind-utils
+# Exclude unnecessary firmware packages
+-iwl*-firmware
+-plymouth
+-NetworkManager-wifi
+{% for pkg in extra_packages | default([]) %}
+{{ pkg }}
+{% endfor %}
+%end
+
+# ============================================================
+# Pre-install script
+# ============================================================
+%pre --log=/tmp/bareignite-pre.log
+#!/bin/bash
+# NeoKylin pre-install script
+
+echo "BareIgnite pre-install for {{ hostname }} (NeoKylin {{ arch }})"
+
+# Detect and log hardware information
+echo "Hardware: $(dmidecode -s system-product-name 2>/dev/null || echo 'unknown')"
+echo "Architecture: $(uname -m)"
+%end
+
+# ============================================================
+# Post-install script
+# ============================================================
+%post --log=/root/bareignite-postinstall.log
+#!/bin/bash
+echo "=== BareIgnite Post-Install: {{ hostname }} (NeoKylin) ==="
+echo "Start time: $(date)"
+
+# --- Install SSH keys ---
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
+{% for key in ssh_keys | default([]) %}
+echo "{{ key }}" >> /root/.ssh/authorized_keys
+{% endfor %}
+{% if ssh_keys | default([]) | length > 0 %}
+chmod 600 /root/.ssh/authorized_keys
+restorecon -R /root/.ssh 2>/dev/null || true
+{% endif %}
+
+# --- Configure NTP ---
+# NeoKylin (RHEL 7-based) uses ntpd by default instead of chrony
+cat > /etc/ntp.conf <<'NTP_EOF'
+driftfile /var/lib/ntp/drift
+restrict default nomodify notrap nopeer noquery
+restrict 127.0.0.1
+restrict ::1
+{% for ntp_server in ntp_servers | default(['ntp.aliyun.com', 'ntp.tencent.com']) %}
+server {{ ntp_server }} iburst
+{% endfor %}
+NTP_EOF
+systemctl enable ntpd 2>/dev/null || chkconfig ntpd on 2>/dev/null || true
+
+# --- Configure DNS resolvers ---
+{% if nameservers is defined and nameservers | length > 0 %}
+cat > /etc/resolv.conf <<'DNS_EOF'
+{% for ns in nameservers %}
+nameserver {{ ns }}
+{% endfor %}
+DNS_EOF
+{% endif %}
+
+# --- NeoKylin-specific configuration ---
+# Verify NeoKylin system identification
+if [ -f /etc/neokylin-release ]; then
+    echo "NeoKylin release: $(cat /etc/neokylin-release)"
+elif [ -f /etc/redhat-release ]; then
+    echo "Release: $(cat /etc/redhat-release)"
+fi
+
+# --- Chinese locale configuration ---
+{% if locale is defined and locale.startswith('zh_CN') %}
+# Set system locale to Chinese
+localedef -i zh_CN -f UTF-8 zh_CN.UTF-8 2>/dev/null || true
+echo 'LANG="{{ locale }}"' > /etc/locale.conf
+{% endif %}
+
+# --- Configure system tuning ---
+# Increase file descriptor limits
+cat >> /etc/security/limits.conf <<'LIMITS_EOF'
+*       soft    nofile  65535
+*       hard    nofile  65535
+*       soft    nproc   65535
+*       hard    nproc   65535
+LIMITS_EOF
+
+# --- Enable essential services ---
+systemctl enable sshd 2>/dev/null || chkconfig sshd on 2>/dev/null || true
+systemctl enable NetworkManager 2>/dev/null || chkconfig network on 2>/dev/null || true
+
+# --- Disable unnecessary services ---
+systemctl disable kdump 2>/dev/null || chkconfig kdump off 2>/dev/null || true
+systemctl disable postfix 2>/dev/null || chkconfig postfix off 2>/dev/null || true
+
+# --- Signal completion to BareIgnite control node ---
+echo "Sending callback to control node..."
+curl -s "http://{{ control_ip }}:{{ callback_port | default('8888') }}/callback?server={{ hostname }}&status=success" || \
+    wget -q -O /dev/null "http://{{ control_ip }}:{{ callback_port | default('8888') }}/callback?server={{ hostname }}&status=success" || \
+    echo "WARNING: Failed to send callback"
+
+echo "=== BareIgnite Post-Install Complete: $(date) ==="
+%end

@@ -1,0 +1,79 @@
+# BareIgnite nginx configuration
+# Generated from spec -- do not edit manually
+# {{ ansible_managed }}
+
+worker_processes auto;
+pid {{ project_logs }}/nginx.pid;
+error_log {{ project_logs }}/nginx-error.log;
+
+events {
+    worker_connections 256;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    sendfile      on;
+    tcp_nopush    on;
+    tcp_nodelay   on;
+
+    # Increase buffer sizes for large file transfers (ISOs)
+    client_max_body_size 0;
+    proxy_buffering off;
+
+    access_log {{ project_logs }}/nginx-access.log;
+
+    server {
+        listen {{ control_ip }}:{{ http_port }};
+        server_name control.{{ domain }} {{ control_ip }};
+
+        # === OS installation media (extracted ISO trees) ===
+        location /images/ {
+            alias {{ bareignite_root }}/images/;
+            autoindex on;
+        }
+
+        # === Per-server kickstart files (RHEL family) ===
+        location /kickstart/ {
+            alias {{ project_generated }}/kickstart/;
+            autoindex on;
+        }
+
+        # === Per-server autoinstall files (Ubuntu) ===
+        location /autoinstall/ {
+            alias {{ project_generated }}/autoinstall/;
+            autoindex on;
+        }
+
+        # === ESXi kickstart files ===
+        location /esxi/ {
+            alias {{ project_generated }}/esxi/;
+            autoindex on;
+        }
+
+        # === PXE boot files (HTTP backup for TFTP) ===
+        location /pxe/ {
+            alias {{ bareignite_root }}/pxe/;
+            autoindex on;
+        }
+
+        # === Windows install files ===
+        location /windows/ {
+            alias {{ project_generated }}/windows/;
+            autoindex on;
+        }
+
+        # === Full ISO images (for Ubuntu autoinstall HTTP source) ===
+        location /iso/ {
+            alias {{ bareignite_root }}/images/;
+            autoindex on;
+        }
+
+        # === Generated config files (general access) ===
+        location /configs/ {
+            alias {{ project_generated }}/;
+            autoindex on;
+        }
+    }
+}

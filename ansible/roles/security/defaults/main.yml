@@ -1,0 +1,103 @@
+---
+# security/defaults/main.yml -- Default variables for the security role
+
+# --- SSH settings ---
+
+# SSH listen port
+security_ssh_port: 22
+
+# Permit root login via SSH: "yes", "no", "prohibit-password", "without-password"
+security_ssh_permit_root_login: "prohibit-password"
+
+# Allow password authentication
+security_ssh_password_auth: false
+
+# Allow X11 forwarding
+security_ssh_x11_forwarding: false
+
+# Max authentication attempts
+security_ssh_max_auth_tries: 3
+
+# Client alive interval (seconds)
+security_ssh_client_alive_interval: 300
+
+# Client alive count max
+security_ssh_client_alive_count_max: 2
+
+# Allowed users (empty = all users allowed)
+security_ssh_allowed_users: []
+
+# --- Firewall settings ---
+
+# Whether to configure firewall
+security_configure_firewall: true
+
+# firewalld default zone (RedHat)
+security_firewalld_default_zone: "public"
+
+# Additional services to allow through firewall
+security_firewall_allowed_services: []
+
+# Additional ports to allow through firewalld (e.g., "8080/tcp")
+security_firewall_allowed_ports: []
+
+# Additional ports to allow through ufw (Debian)
+security_ufw_allowed_ports: []
+
+# --- SELinux (RedHat) ---
+
+# Whether to manage SELinux
+security_manage_selinux: true
+
+# SELinux mode: "enforcing", "permissive", "disabled"
+security_selinux_mode: "enforcing"
+
+# --- AppArmor (Debian) ---
+
+# Whether to manage AppArmor
+security_manage_apparmor: true
+
+# --- Services to disable ---
+
+security_disable_services:
+  - telnet.socket
+  - rsh.socket
+  - rlogin.socket
+  - rexec.socket
+  - rsyncd
+
+# --- Audit ---
+
+# Whether to configure audit logging
+security_configure_audit: true
+
+# --- Kernel hardening sysctl ---
+
+security_sysctl_params:
+  # Disable IP source routing
+  net.ipv4.conf.all.accept_source_route: "0"
+  net.ipv4.conf.default.accept_source_route: "0"
+  net.ipv6.conf.all.accept_source_route: "0"
+  net.ipv6.conf.default.accept_source_route: "0"
+  # Enable TCP SYN cookies (SYN flood protection)
+  net.ipv4.tcp_syncookies: "1"
+  # Log martian packets
+  net.ipv4.conf.all.log_martians: "1"
+  net.ipv4.conf.default.log_martians: "1"
+  # Disable ICMP redirects
+  net.ipv4.conf.all.send_redirects: "0"
+  net.ipv4.conf.default.send_redirects: "0"
+  # Restrict core dumps
+  fs.suid_dumpable: "0"
+  # Restrict kernel pointer access
+  kernel.kptr_restrict: "2"
+  # Restrict dmesg access
+  kernel.dmesg_restrict: "1"
+
+# --- Umask ---
+
+# Whether to set a secure umask
+security_set_umask: true
+
+# Default umask value
+security_umask: "027"

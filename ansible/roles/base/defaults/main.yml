@@ -1,0 +1,85 @@
+---
+# base/defaults/main.yml -- Default variables for the base role
+
+# Timezone (overridden from spec defaults.timezone)
+base_timezone: "Asia/Shanghai"
+
+# Locale (overridden from spec defaults.locale)
+base_locale: "en_US.UTF-8"
+
+# Packages to install on RedHat family systems
+base_packages_rhel:
+  - vim-enhanced
+  - wget
+  - curl
+  - net-tools
+  - bind-utils
+  - lsof
+  - tcpdump
+  - bash-completion
+  - tar
+  - gzip
+  - unzip
+  - rsync
+  - tmux
+  - sysstat
+  - iotop
+  - htop
+  - tree
+  - man-pages
+  - yum-utils
+
+# Packages to install on Debian family systems
+base_packages_debian:
+  - vim
+  - wget
+  - curl
+  - net-tools
+  - dnsutils
+  - lsof
+  - tcpdump
+  - bash-completion
+  - tar
+  - gzip
+  - unzip
+  - rsync
+  - tmux
+  - sysstat
+  - iotop
+  - htop
+  - tree
+  - man-db
+  - apt-transport-https
+  - ca-certificates
+
+# Services to disable on all servers
+base_disable_services:
+  - postfix
+  - cups
+  - avahi-daemon
+  - bluetooth
+
+# Local repo URL for offline installs (empty = skip local repo config)
+# Set to something like "http://10.0.1.1/repo/rocky9" during provisioning
+base_local_repo_url: ""
+
+# Default sysctl parameters applied to all servers
+base_sysctl_params:
+  net.ipv4.ip_forward: "0"
+  net.ipv4.conf.all.rp_filter: "1"
+  net.ipv4.conf.default.rp_filter: "1"
+  net.ipv4.icmp_echo_ignore_broadcasts: "1"
+  net.ipv4.conf.all.accept_redirects: "0"
+  net.ipv4.conf.default.accept_redirects: "0"
+  net.ipv6.conf.all.accept_redirects: "0"
+  net.ipv6.conf.default.accept_redirects: "0"
+  kernel.sysrq: "0"
+  fs.file-max: "2097152"
+
+# Standard directories to create
+base_create_dirs:
+  - /opt/app
+  - /var/log/app
+
+# Default umask
+base_umask: "0022"

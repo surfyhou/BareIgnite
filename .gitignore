@@ -1,0 +1,38 @@
+# Runtime generated files
+projects/*/generated/
+projects/*/logs/
+*.pid
+.running
+
+# OS images (too large for git)
+images/**/*.iso
+images/**/*.img
+
+# Cache and output (Forge)
+forge/cache/os/
+forge/cache/pxe/
+forge/cache/tools/
+forge/cache/metadata.json
+forge/output/builds/
+
+# Tools binaries
+tools/bin/*
+tools/rpms/*
+
+# PXE boot binaries
+pxe/bios/*.0
+pxe/bios/*.c32
+pxe/bios/*.com
+pxe/efi64/*.efi
+pxe/arm64/*.efi
+pxe/ipxe/*
+pxe/wimboot
+
+# OS specific
+.DS_Store
+*.swp
+*.swo
+*~
+__pycache__/
+*.pyc
+.env.local

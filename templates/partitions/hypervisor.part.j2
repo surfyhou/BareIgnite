@@ -1,0 +1,23 @@
+# BareIgnite partition layout: hypervisor
+# Minimal partitioning for hypervisor hosts (KVM / nested use).
+# ESXi uses its own partitioning; this is for Linux-based hypervisors.
+# {{ ansible_managed }}
+#
+# Layout:
+#   /boot/efi  600 MiB  (UEFI only)
+#   /boot      1 GiB
+#   LVM vg_sys:
+#     /       50 GiB+ (grow, rest for VM storage)
+#     swap     8 GiB
+
+clearpart --all --initlabel
+
+{% if boot_mode == "uefi" %}
+part /boot/efi --fstype=efi --size=600
+{% endif %}
+part /boot --fstype=xfs --size=1024
+part pv.01 --size=1 --grow
+
+volgroup vg_sys pv.01
+logvol / --vgname=vg_sys --name=lv_root --fstype=xfs --size=51200 --grow
+logvol swap --vgname=vg_sys --name=lv_swap --size=8192

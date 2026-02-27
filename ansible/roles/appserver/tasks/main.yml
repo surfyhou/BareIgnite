@@ -1,0 +1,107 @@
+---
+# appserver/tasks/main.yml -- Application server preparation
+#
+# Installs common app server prerequisites, creates application
+# directories, and configures system limits for application workloads.
+
+# --- Install runtime packages ---
+
+- name: Install common app server packages (RedHat)
+  yum:
+    name: "{{ appserver_base_packages_rhel }}"
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Install common app server packages (Debian)
+  apt:
+    name: "{{ appserver_base_packages_debian }}"
+    state: present
+  when: ansible_os_family == "Debian"
+
+# --- Install optional runtimes ---
+
+- name: Install Java runtime
+  block:
+    - name: Install Java (RedHat)
+      yum:
+        name: "{{ appserver_java_package_rhel }}"
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Install Java (Debian)
+      apt:
+        name: "{{ appserver_java_package_debian }}"
+        state: present
+      when: ansible_os_family == "Debian"
+  when: appserver_install_java | bool
+
+- name: Install Python runtime
+  block:
+    - name: Install Python (RedHat)
+      yum:
+        name: "{{ appserver_python_packages_rhel }}"
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Install Python (Debian)
+      apt:
+        name: "{{ appserver_python_packages_debian }}"
+        state: present
+      when: ansible_os_family == "Debian"
+  when: appserver_install_python | bool
+
+# --- Application directories ---
+
+- name: Create application directories
+  file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(appserver_app_user) }}"
+    group: "{{ item.group | default(appserver_app_group) }}"
+    mode: "{{ item.mode | default('0755') }}"
+  loop: "{{ appserver_app_dirs }}"
+
+# --- Application user ---
+
+- name: Create application group
+  group:
+    name: "{{ appserver_app_group }}"
+    state: present
+  when: appserver_create_app_user | bool
+
+- name: Create application user
+  user:
+    name: "{{ appserver_app_user }}"
+    group: "{{ appserver_app_group }}"
+    home: "{{ appserver_app_home }}"
+    shell: /bin/bash
+    create_home: true
+    state: present
+  when: appserver_create_app_user | bool
+
+# --- System limits ---
+
+- name: Configure ulimits for application user
+  copy:
+    content: |
+      # BareIgnite application server limits
+      {{ appserver_app_user }}  soft  nofile  {{ appserver_ulimit_nofile }}
+      {{ appserver_app_user }}  hard  nofile  {{ appserver_ulimit_nofile }}
+      {{ appserver_app_user }}  soft  nproc   {{ appserver_ulimit_nproc }}
+      {{ appserver_app_user }}  hard  nproc   {{ appserver_ulimit_nproc }}
+    dest: /etc/security/limits.d/99-bareignite-appserver.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+# --- Kernel parameters ---
+
+- name: Apply app server sysctl parameters
+  sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-bareignite-appserver.conf
+    reload: true
+    state: present
+  loop: "{{ appserver_sysctl_params | dict2items }}"
+  when: appserver_sysctl_params | length > 0

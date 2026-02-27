@@ -1,0 +1,5 @@
+---
+# appserver/handlers/main.yml -- Handlers for the appserver role
+
+- name: reload sysctl
+  command: sysctl --system

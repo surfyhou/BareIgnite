@@ -1,0 +1,12 @@
+[Unit]
+Description=BareIgnite Initialization
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/bareignite/liveusb/overlay/bareignite-init.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

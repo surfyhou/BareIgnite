@@ -1,0 +1,22 @@
+---
+# network-reconfig.yml -- Post-install data network reconfiguration
+#
+# Configures data network interfaces based on spec:
+#   - Static IP assignment on data NICs
+#   - NIC bonding (bond0, bond1, etc.)
+#   - VLAN tagging
+#   - DNS and gateway settings
+#
+# This playbook is typically run after OS installation when servers
+# are still reachable via their IPMI/provisioning IPs.
+
+- name: Network reconfiguration
+  hosts: all
+  gather_facts: true
+  tags:
+    - network
+
+  roles:
+    - role: network
+      tags:
+        - network

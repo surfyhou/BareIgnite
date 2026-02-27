@@ -1,0 +1,15 @@
+[Unit]
+Description=BareIgnite Media Loader
+After=multi-user.target
+ConditionPathExists=/mnt/bareignite-data/manifest.txt
+
+[Service]
+Type=oneshot
+ExecStart=/opt/bareignite/scripts/media-loader.sh
+StandardInput=tty
+StandardOutput=tty
+TTYPath=/dev/tty1
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

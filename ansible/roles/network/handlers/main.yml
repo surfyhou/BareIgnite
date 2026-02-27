@@ -1,0 +1,12 @@
+---
+# network/handlers/main.yml -- Handlers for the network role
+
+- name: restart networkmanager
+  service:
+    name: NetworkManager
+    state: restarted
+  when: ansible_os_family == "RedHat"
+
+- name: apply netplan
+  command: netplan apply
+  when: ansible_os_family == "Debian"

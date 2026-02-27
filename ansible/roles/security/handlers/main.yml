@@ -1,0 +1,7 @@
+---
+# security/handlers/main.yml -- Handlers for the security role
+
+- name: restart sshd
+  service:
+    name: sshd
+    state: restarted

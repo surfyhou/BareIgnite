@@ -1,0 +1,48 @@
+components:
+  syslinux:
+    category: pxe
+    current_version: "6.03"
+    check_type: url_pattern
+    check_url: "https://mirrors.edge.kernel.org/pub/linux/utils/boot/syslinux/"
+
+  ipxe:
+    category: pxe
+    current_version: ""
+    check_type: github_release
+    repo: "ipxe/ipxe"
+
+  wimboot:
+    category: pxe
+    current_version: ""
+    check_type: github_release
+    repo: "ipxe/wimboot"
+
+  grub2:
+    category: pxe
+    current_version: ""
+    check_type: url_pattern
+    check_url: "https://ftp.gnu.org/gnu/grub/"
+
+  shim:
+    category: pxe
+    current_version: ""
+    check_type: github_release
+    repo: "rhboot/shim"
+
+  yq:
+    category: tools
+    current_version: ""
+    check_type: github_release
+    repo: "mikefarah/yq"
+
+  jq:
+    category: tools
+    current_version: ""
+    check_type: github_release
+    repo: "jqlang/jq"
+
+  ansible-core:
+    category: ansible
+    current_version: ""
+    check_type: pypi
+    package: "ansible-core"

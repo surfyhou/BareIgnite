@@ -1,0 +1,30 @@
+# BareIgnite partition layout: appserver
+# Application server with dedicated /opt and large /var/log.
+# {{ ansible_managed }}
+#
+# Layout:
+#   /boot/efi  600 MiB  (UEFI only)
+#   /boot      1 GiB
+#   LVM vg_app:
+#     /          50 GiB
+#     /opt       50 GiB+ (grow, for application binaries)
+#     /var       20 GiB
+#     /var/log   20 GiB
+#     /tmp       10 GiB
+#     swap       16 GiB
+
+clearpart --all --initlabel
+
+{% if boot_mode == "uefi" %}
+part /boot/efi --fstype=efi --size=600
+{% endif %}
+part /boot --fstype=xfs --size=1024
+part pv.01 --size=1 --grow
+
+volgroup vg_app pv.01
+logvol /        --vgname=vg_app --name=lv_root   --fstype=xfs --size=51200
+logvol /opt     --vgname=vg_app --name=lv_opt    --fstype=xfs --size=51200 --grow
+logvol /var     --vgname=vg_app --name=lv_var    --fstype=xfs --size=20480
+logvol /var/log --vgname=vg_app --name=lv_varlog --fstype=xfs --size=20480
+logvol /tmp     --vgname=vg_app --name=lv_tmp    --fstype=xfs --size=10240
+logvol swap     --vgname=vg_app --name=lv_swap   --size=16384

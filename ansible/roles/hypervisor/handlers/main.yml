@@ -1,0 +1,17 @@
+---
+# hypervisor/handlers/main.yml -- Handlers for the hypervisor role
+
+- name: restart libvirtd
+  service:
+    name: libvirtd
+    state: restarted
+
+- name: restart networkmanager
+  service:
+    name: NetworkManager
+    state: restarted
+  when: ansible_os_family == "RedHat"
+
+- name: apply netplan
+  command: netplan apply
+  when: ansible_os_family == "Debian"

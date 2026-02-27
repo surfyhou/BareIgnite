@@ -1,0 +1,106 @@
+---
+# network/tasks/main.yml -- Data network reconfiguration
+#
+# Configures data NICs, bonding, and VLANs on provisioned servers.
+# Supports both RedHat (NetworkManager/ifcfg) and Debian (netplan) families.
+
+- name: Detect network manager type
+  set_fact:
+    network_manager: >-
+      {{ 'networkmanager' if (ansible_os_family == 'RedHat' and
+         ansible_distribution_major_version | int >= 8) or
+         (ansible_os_family == 'Debian' and
+         ansible_distribution_major_version | default('22') | int >= 18)
+         else 'legacy' }}
+
+# --- Bonding configuration ---
+
+- name: Configure bonding interfaces
+  include_tasks: configure-bond.yml
+  loop: "{{ network_bonds }}"
+  loop_control:
+    loop_var: bond
+  when: network_bonds | length > 0
+
+# --- Standalone data NIC configuration ---
+
+- name: Configure standalone data NICs (no bonding)
+  include_tasks: configure-nic.yml
+  loop: "{{ network_data_nics }}"
+  loop_control:
+    loop_var: nic
+  when: network_data_nics | length > 0
+
+# --- VLAN configuration ---
+
+- name: Configure VLAN interfaces
+  include_tasks: configure-vlan.yml
+  loop: "{{ network_vlans }}"
+  loop_control:
+    loop_var: vlan
+  when: network_vlans | length > 0
+
+# --- Apply network configuration ---
+
+- name: Apply network configuration (RedHat - NetworkManager)
+  block:
+    - name: Reload NetworkManager connections
+      command: nmcli connection reload
+      changed_when: true
+
+    - name: Bring up configured interfaces
+      command: "nmcli connection up {{ item.name }}"
+      loop: "{{ network_data_nics + network_bonds }}"
+      failed_when: false
+      changed_when: true
+  when: ansible_os_family == "RedHat"
+
+- name: Apply network configuration (Debian - netplan)
+  block:
+    - name: Generate netplan configuration
+      template:
+        src: netplan-config.yaml.j2
+        dest: /etc/netplan/60-bareignite-data.yaml
+        owner: root
+        group: root
+        mode: "0600"
+        backup: true
+
+    - name: Apply netplan configuration
+      command: netplan apply
+      changed_when: true
+  when: ansible_os_family == "Debian"
+
+# --- DNS configuration ---
+
+- name: Configure resolv.conf (if not managed by NetworkManager)
+  template:
+    src: resolv.conf.j2
+    dest: /etc/resolv.conf
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  when: network_manage_resolv_conf | bool
+
+# --- Verification ---
+
+- name: Wait for data network interfaces to come up
+  wait_for:
+    timeout: 10
+  delegate_to: localhost
+  become: false
+
+- name: Verify data NIC IP assignment
+  command: "ip addr show {{ item.device | default(item.name) }}"
+  register: ip_check
+  loop: "{{ network_data_nics + network_bonds }}"
+  changed_when: false
+  failed_when: false
+
+- name: Display network verification results
+  debug:
+    msg: "Interface {{ item.item.name }}: {{ 'UP' if item.rc == 0 else 'DOWN/MISSING' }}"
+  loop: "{{ ip_check.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"

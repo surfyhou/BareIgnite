@@ -1,0 +1,159 @@
+---
+# hypervisor/tasks/main.yml -- Hypervisor post-configuration
+#
+# For KVM/libvirt hosts: installs virtualization packages, configures
+# libvirt, sets up bridge networking, enables nested virtualization.
+# ESXi hosts have limited post-install configuration via Ansible.
+
+# --- Detect hypervisor type ---
+
+- name: Check if this is an ESXi host
+  set_fact:
+    is_esxi: "{{ os_family | default('') == 'esxi' }}"
+
+# --- ESXi post-configuration (limited) ---
+
+- name: ESXi post-configuration notice
+  debug:
+    msg: >
+      ESXi host {{ inventory_hostname }} - limited Ansible post-config available.
+      Most ESXi configuration is done via kickstart %firstboot scripts.
+      Use vSphere/esxcli for advanced configuration.
+  when: is_esxi | bool
+
+# --- KVM/libvirt configuration ---
+
+- name: Configure KVM hypervisor
+  block:
+    # --- Install virtualization packages ---
+
+    - name: Install KVM packages (RedHat)
+      yum:
+        name: "{{ hypervisor_kvm_packages_rhel }}"
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Install KVM packages (Debian)
+      apt:
+        name: "{{ hypervisor_kvm_packages_debian }}"
+        state: present
+      when: ansible_os_family == "Debian"
+
+    # --- Enable nested virtualization ---
+
+    - name: Enable nested virtualization (Intel)
+      block:
+        - name: Check if Intel VMX is available
+          command: grep -c vmx /proc/cpuinfo
+          register: vmx_check
+          changed_when: false
+          failed_when: false
+
+        - name: Enable nested virtualization for kvm_intel
+          copy:
+            content: "options kvm_intel nested=1"
+            dest: /etc/modprobe.d/kvm-nested.conf
+            owner: root
+            group: root
+            mode: "0644"
+          when: vmx_check.stdout | default('0') | int > 0
+      when: hypervisor_enable_nested | bool
+
+    - name: Enable nested virtualization (AMD)
+      block:
+        - name: Check if AMD SVM is available
+          command: grep -c svm /proc/cpuinfo
+          register: svm_check
+          changed_when: false
+          failed_when: false
+
+        - name: Enable nested virtualization for kvm_amd
+          copy:
+            content: "options kvm_amd nested=1"
+            dest: /etc/modprobe.d/kvm-nested.conf
+            owner: root
+            group: root
+            mode: "0644"
+          when: svm_check.stdout | default('0') | int > 0
+      when: hypervisor_enable_nested | bool
+
+    # --- Configure and start libvirtd ---
+
+    - name: Enable and start libvirtd
+      service:
+        name: libvirtd
+        state: started
+        enabled: true
+
+    # --- Bridge networking ---
+
+    - name: Configure bridge network for VMs (RedHat)
+      block:
+        - name: Create bridge ifcfg file
+          template:
+            src: ifcfg-bridge.j2
+            dest: "/etc/sysconfig/network-scripts/ifcfg-{{ hypervisor_bridge_name }}"
+            owner: root
+            group: root
+            mode: "0644"
+            backup: true
+
+        - name: Configure bridge slave interface
+          template:
+            src: ifcfg-bridge-slave.j2
+            dest: "/etc/sysconfig/network-scripts/ifcfg-{{ hypervisor_bridge_slave }}"
+            owner: root
+            group: root
+            mode: "0644"
+            backup: true
+          when: hypervisor_bridge_slave | length > 0
+
+        - name: Restart NetworkManager to apply bridge
+          service:
+            name: NetworkManager
+            state: restarted
+          when: hypervisor_bridge_slave | length > 0
+      when:
+        - ansible_os_family == "RedHat"
+        - hypervisor_configure_bridge | bool
+
+    - name: Configure bridge network for VMs (Debian)
+      block:
+        - name: Create netplan bridge configuration
+          template:
+            src: netplan-bridge.yaml.j2
+            dest: /etc/netplan/70-bareignite-bridge.yaml
+            owner: root
+            group: root
+            mode: "0600"
+            backup: true
+
+        - name: Apply netplan bridge configuration
+          command: netplan apply
+          changed_when: true
+      when:
+        - ansible_os_family == "Debian"
+        - hypervisor_configure_bridge | bool
+
+    # --- Kernel parameters for virtualization ---
+
+    - name: Apply hypervisor sysctl parameters
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        sysctl_file: /etc/sysctl.d/99-bareignite-hypervisor.conf
+        reload: true
+        state: present
+      loop: "{{ hypervisor_sysctl_params | dict2items }}"
+
+    # --- Storage pool ---
+
+    - name: Create default storage directory
+      file:
+        path: "{{ hypervisor_storage_pool_path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0711"
+
+  when: not (is_esxi | bool)

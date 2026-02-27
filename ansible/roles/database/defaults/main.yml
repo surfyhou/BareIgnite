@@ -1,0 +1,80 @@
+---
+# database/defaults/main.yml -- Default variables for the database role
+
+# Database user/group (generic; actual DB user may differ)
+database_user: "dbadmin"
+database_group: "dbadmin"
+database_uid: ""
+database_gid: ""
+database_home_dir: "/home/dbadmin"
+
+# Data directories to create
+database_data_dirs:
+  - /data
+  - /data/db
+  - /data/db/data
+  - /data/db/log
+  - /data/db/backup
+
+# Kernel parameters optimized for database workloads
+database_sysctl_params:
+  # Shared memory - allow up to 64GB
+  kernel.shmmax: "68719476736"
+  kernel.shmall: "4294967296"
+  # Semaphores: SEMMSL SEMMNS SEMOPM SEMMNI
+  kernel.sem: "250 32000 100 128"
+  # Network tuning
+  net.core.somaxconn: "4096"
+  net.core.netdev_max_backlog: "5000"
+  net.ipv4.tcp_max_syn_backlog: "4096"
+  net.ipv4.tcp_fin_timeout: "15"
+  net.ipv4.tcp_keepalive_time: "600"
+  net.ipv4.tcp_keepalive_intvl: "30"
+  net.ipv4.tcp_keepalive_probes: "5"
+  # File system
+  fs.file-max: "6815744"
+  fs.aio-max-nr: "1048576"
+  # Virtual memory
+  vm.swappiness: "10"
+  vm.dirty_ratio: "15"
+  vm.dirty_background_ratio: "3"
+  vm.overcommit_memory: "0"
+
+# ulimit values for database user
+database_ulimit_nofile: "65536"
+database_ulimit_nproc: "65536"
+database_ulimit_memlock: "unlimited"
+database_ulimit_stack: "32768"
+database_ulimit_core: "unlimited"
+
+# I/O scheduler (mq-deadline or none for NVMe)
+database_io_scheduler: "mq-deadline"
+
+# Default disk devices to apply I/O scheduler
+database_default_disk_devices:
+  - sda
+  - sdb
+
+# Whether to disable Transparent Huge Pages
+database_disable_thp: true
+
+# Prerequisite packages (RedHat)
+database_prereq_packages_rhel:
+  - libaio
+  - libaio-devel
+  - numactl
+  - numactl-libs
+  - bc
+  - nfs-utils
+  - pam
+  - pam-devel
+
+# Prerequisite packages (Debian)
+database_prereq_packages_debian:
+  - libaio1
+  - libaio-dev
+  - numactl
+  - bc
+  - nfs-common
+  - libpam0g
+  - libpam0g-dev

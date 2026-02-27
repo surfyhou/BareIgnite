@@ -1,0 +1,160 @@
+# BareIgnite Example Spec
+# Demonstrates a typical mixed-OS data center deployment.
+
+project:
+  name: example-datacenter
+  description: "Example deployment with Rocky 9, Ubuntu 22.04, and ESXi 8 servers"
+
+# -----------------------------------------------------------------------
+# Network configuration
+# -----------------------------------------------------------------------
+network:
+  ipmi:
+    subnet: 10.0.1.0/24
+    gateway: 10.0.1.1
+    dhcp_range: 10.0.1.100,10.0.1.200
+    dns: 10.0.1.1
+
+  data:
+    - name: management
+      subnet: 10.0.2.0/24
+      gateway: 10.0.2.1
+      vlan: 100
+      description: "Management / provisioning network"
+
+    - name: storage
+      subnet: 10.0.3.0/24
+      gateway: 10.0.3.1
+      vlan: 200
+      description: "Storage network (iSCSI / NFS)"
+
+# -----------------------------------------------------------------------
+# Default values applied to all servers unless overridden
+# -----------------------------------------------------------------------
+defaults:
+  root_password: "$6$rounds=100000$saltsaltsa$WkMFLmXJQPF5GY4zQdF3pJKCqNqdKiZ2H9FMO.IIRyXEMGN4L0Ga6HKYmSZc1W93FVz/0FZcKI4x4OqG4fMc/"
+  timezone: Asia/Shanghai
+  locale: en_US.UTF-8
+  partition_scheme: generic
+  boot_mode: uefi
+  ssh_keys:
+    - "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC7... admin@control-node"
+    - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... ops@bastion"
+
+# -----------------------------------------------------------------------
+# OS Catalog - defines available OS images and their properties
+# -----------------------------------------------------------------------
+os_catalog:
+  - id: rocky9
+    family: rhel
+    method: kickstart
+    iso_path: images/rocky/Rocky-9.3-x86_64-dvd.iso
+    description: "Rocky Linux 9.3"
+
+  - id: ubuntu2204
+    family: debian
+    method: autoinstall
+    iso_path: images/ubuntu/ubuntu-22.04.4-live-server-amd64.iso
+    description: "Ubuntu 22.04.4 LTS"
+
+  - id: esxi8
+    family: esxi
+    method: esxi-kickstart
+    iso_path: images/esxi/VMware-VMvisor-Installer-8.0U2-22380479.x86_64.iso
+    description: "VMware ESXi 8.0 Update 2"
+
+# -----------------------------------------------------------------------
+# Server definitions
+# -----------------------------------------------------------------------
+servers:
+  # --- Database server: Rocky 9 with custom disk layout ---
+  - name: db-server-01
+    role: database
+    os: rocky9
+    arch: x86_64
+    boot_mode: uefi
+    mac_addresses:
+      pxe_boot: "AA:BB:CC:01:01:01"
+      ipmi: "AA:BB:CC:01:01:02"
+    ipmi:
+      ip: 10.0.1.101
+    networks:
+      - name: management
+        ip: 10.0.2.101
+      - name: storage
+        ip: 10.0.3.101
+    disk_layout:
+      scheme: database
+      disks:
+        - device: /dev/sda
+          partitions:
+            - mount: /boot/efi
+              size: 600MiB
+              fstype: vfat
+            - mount: /boot
+              size: 1GiB
+              fstype: xfs
+            - mount: /
+              size: 50GiB
+              fstype: xfs
+            - mount: /var
+              size: 20GiB
+              fstype: xfs
+            - mount: swap
+              size: 16GiB
+        - device: /dev/sdb
+          partitions:
+            - mount: /data
+              size: max
+              fstype: xfs
+
+  # --- App server 1: Rocky 9, standard layout ---
+  - name: app-server-01
+    role: appserver
+    os: rocky9
+    arch: x86_64
+    boot_mode: uefi
+    mac_addresses:
+      pxe_boot: "AA:BB:CC:02:01:01"
+      ipmi: "AA:BB:CC:02:01:02"
+    ipmi:
+      ip: 10.0.1.102
+    networks:
+      - name: management
+        ip: 10.0.2.102
+      - name: storage
+        ip: 10.0.3.102
+
+  # --- App server 2: Ubuntu 22.04 ---
+  - name: app-server-02
+    role: appserver
+    os: ubuntu2204
+    arch: x86_64
+    boot_mode: uefi
+    mac_addresses:
+      pxe_boot: "AA:BB:CC:03:01:01"
+      ipmi: "AA:BB:CC:03:01:02"
+    ipmi:
+      ip: 10.0.1.103
+    networks:
+      - name: management
+        ip: 10.0.2.103
+      - name: storage
+        ip: 10.0.3.103
+
+  # --- ESXi hypervisor host (UEFI only) ---
+  - name: esxi-host-01
+    role: hypervisor
+    os: esxi8
+    arch: x86_64
+    boot_mode: uefi
+    mac_addresses:
+      pxe_boot: "AA:BB:CC:04:01:01"
+      ipmi: "AA:BB:CC:04:01:02"
+    ipmi:
+      ip: 10.0.1.104
+    networks:
+      - name: management
+        ip: 10.0.2.104
+      - name: storage
+        ip: 10.0.3.104

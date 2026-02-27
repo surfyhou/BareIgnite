@@ -1,0 +1,98 @@
+os_images:
+  rocky9:
+    name: "Rocky Linux 9"
+    family: rhel
+    versions:
+      "9.5":
+        x86_64:
+          url: "https://download.rockylinux.org/pub/rocky/9/isos/x86_64/Rocky-9.5-x86_64-dvd.iso"
+          sha256: ""
+          size: 10737418240
+        aarch64:
+          url: "https://download.rockylinux.org/pub/rocky/9/isos/aarch64/Rocky-9.5-aarch64-dvd.iso"
+          sha256: ""
+          size: 0
+    check_url: "https://download.rockylinux.org/pub/rocky/9/isos/"
+
+  rocky8:
+    name: "Rocky Linux 8"
+    family: rhel
+    versions:
+      "8.10":
+        x86_64:
+          url: "https://download.rockylinux.org/pub/rocky/8/isos/x86_64/Rocky-8.10-x86_64-dvd1.iso"
+          sha256: ""
+          size: 0
+    check_url: "https://download.rockylinux.org/pub/rocky/8/isos/"
+
+  centos7:
+    name: "CentOS 7"
+    family: rhel
+    versions:
+      "7.9.2009":
+        x86_64:
+          url: "http://mirror.centos.org/centos/7.9.2009/isos/x86_64/CentOS-7-x86_64-DVD-2009.iso"
+          sha256: ""
+          size: 0
+
+  ubuntu2404:
+    name: "Ubuntu 24.04 LTS"
+    family: debian
+    versions:
+      "24.04.1":
+        x86_64:
+          url: "https://releases.ubuntu.com/24.04.1/ubuntu-24.04.1-live-server-amd64.iso"
+          sha256: ""
+          size: 0
+    check_url: "https://releases.ubuntu.com/24.04.1/"
+
+  ubuntu2204:
+    name: "Ubuntu 22.04 LTS"
+    family: debian
+    versions:
+      "22.04.5":
+        x86_64:
+          url: "https://releases.ubuntu.com/22.04.5/ubuntu-22.04.5-live-server-amd64.iso"
+          sha256: ""
+          size: 0
+    check_url: "https://releases.ubuntu.com/22.04.5/"
+
+  ubuntu2004:
+    name: "Ubuntu 20.04 LTS"
+    family: debian
+    note: "Manual download - check releases.ubuntu.com/20.04/"
+
+  esxi8:
+    name: "VMware ESXi 8"
+    family: esxi
+    note: "Manual download required from VMware (Broadcom) Customer Connect"
+
+  esxi7:
+    name: "VMware ESXi 7"
+    family: esxi
+    note: "Manual download required from VMware (Broadcom) Customer Connect"
+
+  win2022:
+    name: "Windows Server 2022"
+    family: windows
+    note: "Manual download from Microsoft Evaluation Center or VLSC"
+
+  win2019:
+    name: "Windows Server 2019"
+    family: windows
+    note: "Manual download from Microsoft Evaluation Center or VLSC"
+
+  kylin-v10:
+    name: "Kylin V10"
+    family: rhel
+    note: "Manual download from kylinsoft.cn"
+
+  neokylin:
+    name: "NeoKylin"
+    family: rhel
+    note: "Manual download"
+
+  uos:
+    name: "UnionTech UOS"
+    family: debian
+    note: "Manual download from uniontech.com"

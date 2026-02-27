@@ -1,0 +1,44 @@
+---
+# network/tasks/configure-bond.yml -- Configure a bonding interface
+#
+# Called in a loop with 'bond' variable containing:
+#   name, mode, slaves, ip, prefix, gateway, dns
+
+# RedHat: use ifcfg files or nmcli
+- name: "Configure bond {{ bond.name }} (RedHat)"
+  block:
+    - name: "Create bond master ifcfg file for {{ bond.name }}"
+      template:
+        src: ifcfg-bond.j2
+        dest: "/etc/sysconfig/network-scripts/ifcfg-{{ bond.name }}"
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
+      vars:
+        bond_name: "{{ bond.name }}"
+        bond_mode: "{{ bond.mode | default(network_default_bond_mode) }}"
+        ip_address: "{{ bond.ip }}"
+        prefix: "{{ bond.prefix | default(24) }}"
+        gateway: "{{ bond.gateway | default('') }}"
+        dns1: "{{ bond.dns[0] | default(network_dns_servers[0] | default('')) }}"
+
+    - name: "Create slave ifcfg files for {{ bond.name }}"
+      template:
+        src: ifcfg-slave.j2
+        dest: "/etc/sysconfig/network-scripts/ifcfg-{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
+      loop: "{{ bond.slaves }}"
+      vars:
+        slave_name: "{{ item }}"
+        bond_name: "{{ bond.name }}"
+  when: ansible_os_family == "RedHat"
+
+# Debian: netplan handles bonding in the main netplan template
+- name: "Record bond {{ bond.name }} for netplan (Debian)"
+  debug:
+    msg: "Bond {{ bond.name }} will be configured via netplan template"
+  when: ansible_os_family == "Debian"

@@ -1,0 +1,48 @@
+---
+# hypervisor/defaults/main.yml -- Default variables for the hypervisor role
+
+# KVM packages (RedHat)
+hypervisor_kvm_packages_rhel:
+  - qemu-kvm
+  - libvirt
+  - libvirt-client
+  - virt-install
+  - virt-manager
+  - bridge-utils
+  - libguestfs-tools
+
+# KVM packages (Debian)
+hypervisor_kvm_packages_debian:
+  - qemu-kvm
+  - libvirt-daemon-system
+  - libvirt-clients
+  - virtinst
+  - virt-manager
+  - bridge-utils
+  - libguestfs-tools
+
+# Enable nested virtualization
+hypervisor_enable_nested: false
+
+# Bridge networking configuration
+hypervisor_configure_bridge: false
+hypervisor_bridge_name: "br0"
+hypervisor_bridge_slave: ""
+hypervisor_bridge_ip: ""
+hypervisor_bridge_prefix: 24
+hypervisor_bridge_gateway: ""
+
+# Default storage pool path
+hypervisor_storage_pool_path: "/var/lib/libvirt/images"
+
+# Kernel parameters for KVM hosts
+hypervisor_sysctl_params:
+  # Allow IP forwarding for VM networking
+  net.ipv4.ip_forward: "1"
+  # Bridge networking support
+  net.bridge.bridge-nf-call-iptables: "0"
+  net.bridge.bridge-nf-call-ip6tables: "0"
+  net.bridge.bridge-nf-call-arptables: "0"
+  # Memory overcommit for VMs
+  vm.overcommit_memory: "1"
+  vm.swappiness: "10"

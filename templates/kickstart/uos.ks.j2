@@ -1,0 +1,246 @@
+# BareIgnite: UnionTech UOS Server Kickstart Template
+# Template: uos.ks.j2
+#
+# UOS (统信 UnionTech OS) Server is based on Debian but uses an Anaconda-based
+# installer, supporting kickstart syntax despite its Debian heritage.
+# The installer is similar to deepin's Anaconda fork.
+#
+# Key differences from standard RHEL kickstart:
+#   - Package management uses apt (dpkg) underneath, but kickstart %packages works
+#   - Some package names differ from RHEL equivalents
+#   - UOS has its own repo structure and security update mechanism
+#   - Post-install uses both systemctl and dpkg-reconfigure where needed
+#
+# Supported architectures: x86_64, aarch64 (Kunpeng, Phytium)
+# For ARM64 on Huawei hardware: may need vendor-class-identifier "HW-Client" in DHCP
+
+# Installation method
+install
+{{ 'url --url="http://' + control_ip + '/images/uos/' + arch + '/"' }}
+
+# System language, keyboard, and timezone
+lang {{ locale | default('zh_CN.UTF-8') }}
+keyboard {{ keyboard | default('us') }}
+timezone {{ timezone | default('Asia/Shanghai') }} --utc
+
+# Network configuration during install (DHCP on PXE NIC)
+network --bootproto=dhcp --device={{ pxe_mac }} --activate --onboot=yes
+network --hostname={{ hostname }}
+
+# Root password
+rootpw --iscrypted {{ root_password }}
+
+# Authentication and security
+# UOS uses PAM-based authentication (Debian-style)
+authconfig --enableshadow --passalgo=sha512
+
+# Security settings
+# UOS uses AppArmor instead of SELinux by default
+selinux --disabled
+firewall --enabled --ssh
+
+# Bootloader configuration
+bootloader --append="crashkernel=auto" --location=mbr
+
+# Clear all existing partitions
+clearpart --all --initlabel
+zerombr
+
+# Disk partitioning
+{% if partition_template is defined %}
+{% include partition_template %}
+{% else %}
+# Default partitioning for UOS
+# UOS recommends ext4 for root filesystem
+part /boot --fstype="ext4" --size=1024
+{% if boot_mode | default('uefi') == 'uefi' %}
+part /boot/efi --fstype="efi" --size=512
+{% endif %}
+part pv.01 --size=1 --grow
+volgroup vg_system pv.01
+logvol / --fstype="ext4" --name=lv_root --vgname=vg_system --size=51200
+logvol swap --fstype="swap" --name=lv_swap --vgname=vg_system --size=8192
+logvol /var --fstype="ext4" --name=lv_var --vgname=vg_system --size=20480
+logvol /data --fstype="ext4" --name=lv_data --vgname=vg_system --size=1 --grow
+{% endif %}
+
+# Skip graphical desktop
+skipx
+
+# Agree to EULA
+eula --agreed
+
+# Reboot after installation
+reboot
+
+# ============================================================
+# Package selection
+# ============================================================
+# UOS uses apt-based package management but Anaconda translates
+# kickstart %packages to the appropriate backend calls
+%packages
+# Core system
+openssh-server
+openssh-client
+curl
+wget
+vim
+bash-completion
+net-tools
+# Python (UOS ships Python 3)
+python3
+python3-pip
+# System monitoring
+lm-sensors
+dmidecode
+smartmontools
+pciutils
+# LVM support
+lvm2
+# Network tools
+traceroute
+dnsutils
+iproute2
+# Chinese locale and fonts
+locales
+fonts-noto-cjk
+# NTP client
+chrony
+# UOS-specific packages (available in UOS repos)
+# uos-release is typically pre-installed from the ISO
+{% for pkg in extra_packages | default([]) %}
+{{ pkg }}
+{% endfor %}
+%end
+
+# ============================================================
+# Pre-install script
+# ============================================================
+%pre --log=/tmp/bareignite-pre.log
+#!/bin/bash
+# UOS pre-install script
+
+echo "BareIgnite pre-install for {{ hostname }} (UOS {{ arch }})"
+
+{% if arch == 'aarch64' %}
+# Workaround for ARM64 (Kunpeng/Phytium) DHCP issues
+# UOS on ARM64 may need explicit NIC initialization
+dhclient -r 2>/dev/null || true
+sleep 3
+dhclient 2>/dev/null || true
+{% endif %}
+
+# Log hardware details for troubleshooting
+echo "Hardware: $(cat /sys/class/dmi/id/product_name 2>/dev/null || echo 'unknown')"
+echo "Architecture: $(uname -m)"
+%end
+
+# ============================================================
+# Post-install script
+# ============================================================
+%post --log=/root/bareignite-postinstall.log
+#!/bin/bash
+echo "=== BareIgnite Post-Install: {{ hostname }} (UOS) ==="
+echo "Start time: $(date)"
+
+# --- Install SSH keys ---
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
+{% for key in ssh_keys | default([]) %}
+echo "{{ key }}" >> /root/.ssh/authorized_keys
+{% endfor %}
+{% if ssh_keys | default([]) | length > 0 %}
+chmod 600 /root/.ssh/authorized_keys
+{% endif %}
+
+# --- Configure apt sources (UOS local repo from control node) ---
+# Preserve original sources as backup
+cp /etc/apt/sources.list /etc/apt/sources.list.bak 2>/dev/null || true
+
+# Add local BareIgnite repo for offline package installation
+cat >> /etc/apt/sources.list <<'APT_EOF'
+# BareIgnite local repo (available during provisioning only)
+deb [trusted=yes] http://{{ control_ip }}/images/uos/{{ arch }}/ /
+APT_EOF
+
+# --- Configure NTP (chrony) ---
+cat > /etc/chrony/chrony.conf <<'CHRONY_EOF'
+{% for ntp_server in ntp_servers | default(['ntp.aliyun.com', 'ntp.tencent.com']) %}
+server {{ ntp_server }} iburst
+{% endfor %}
+driftfile /var/lib/chrony/chrony.drift
+makestep 1.0 3
+rtcsync
+logdir /var/log/chrony
+CHRONY_EOF
+systemctl enable chrony
+
+# --- Configure DNS resolvers ---
+{% if nameservers is defined and nameservers | length > 0 %}
+# Disable systemd-resolved if present to allow direct resolv.conf management
+systemctl disable systemd-resolved 2>/dev/null || true
+systemctl stop systemd-resolved 2>/dev/null || true
+rm -f /etc/resolv.conf 2>/dev/null || true
+
+cat > /etc/resolv.conf <<'DNS_EOF'
+{% for ns in nameservers %}
+nameserver {{ ns }}
+{% endfor %}
+DNS_EOF
+{% endif %}
+
+# --- Chinese locale configuration ---
+{% if locale is defined and locale.startswith('zh_CN') %}
+# Generate Chinese locale
+sed -i 's/# zh_CN.UTF-8 UTF-8/zh_CN.UTF-8 UTF-8/' /etc/locale.gen 2>/dev/null || true
+locale-gen 2>/dev/null || true
+update-locale LANG="{{ locale }}" 2>/dev/null || true
+{% endif %}
+
+# --- UOS-specific configuration ---
+# Verify UOS system identification
+if [ -f /etc/uos-release ]; then
+    echo "UOS release: $(cat /etc/uos-release)"
+elif [ -f /etc/os-release ]; then
+    echo "OS release: $(grep PRETTY_NAME /etc/os-release)"
+fi
+
+# Configure UOS security center (if present)
+if command -v uos-activator &>/dev/null; then
+    echo "UOS activation tool detected"
+fi
+
+# --- Configure system tuning ---
+# Increase file descriptor limits
+cat >> /etc/security/limits.conf <<'LIMITS_EOF'
+*       soft    nofile  65535
+*       hard    nofile  65535
+*       soft    nproc   65535
+*       hard    nproc   65535
+LIMITS_EOF
+
+# Kernel tuning
+cat > /etc/sysctl.d/99-bareignite.conf <<'SYSCTL_EOF'
+net.ipv4.ip_forward = 0
+net.ipv4.conf.default.rp_filter = 1
+net.ipv4.conf.default.accept_source_route = 0
+fs.file-max = 655350
+net.core.somaxconn = 65535
+SYSCTL_EOF
+
+# --- Enable essential services ---
+systemctl enable ssh
+systemctl enable chrony
+systemctl enable networking 2>/dev/null || true
+
+# --- Disable unnecessary services ---
+systemctl disable cups 2>/dev/null || true
+systemctl disable avahi-daemon 2>/dev/null || true
+
+# --- Signal completion to BareIgnite control node ---
+echo "Sending callback to control node..."
+curl -s "http://{{ control_ip }}:{{ callback_port | default('8888') }}/callback?server={{ hostname }}&status=success" || \
+    wget -q -O /dev/null "http://{{ control_ip }}:{{ callback_port | default('8888') }}/callback?server={{ hostname }}&status=success" || \
+    echo "WARNING: Failed to send callback"
+
+echo "=== BareIgnite Post-Install Complete: $(date) ==="
+%end

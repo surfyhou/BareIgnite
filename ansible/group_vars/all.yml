@@ -1,0 +1,40 @@
+---
+# group_vars/all.yml -- Global variables for all hosts
+#
+# This file serves as a template. During config generation (generate-configs.sh),
+# values are populated from the project spec file. Variables here provide
+# documentation and fallback defaults.
+#
+# Per-host variables are set in the generated inventory or host_vars files.
+
+# --- Project information ---
+# bareignite_project_name: ""
+# bareignite_project_id: ""
+
+# --- Network ---
+
+# DNS servers for all hosts (from spec network.data[].dns)
+# network_dns_servers: []
+
+# NTP servers (from spec defaults.ntp_servers)
+# ntp_servers: []
+
+# --- Authentication ---
+
+# SSH public keys to deploy (from spec defaults.ssh_keys)
+# users_root_ssh_keys: []
+
+# --- Timezone and locale ---
+
+# base_timezone: "Asia/Shanghai"
+# base_locale: "en_US.UTF-8"
+
+# --- Control node information ---
+
+# IP address of the BareIgnite control node
+# control_node_ip: ""
+
+# --- Offline mode ---
+
+# URL for local package repository (served by control node)
+# base_local_repo_url: ""

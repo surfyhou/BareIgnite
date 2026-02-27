@@ -1,0 +1,51 @@
+---
+# ntp/tasks/main.yml -- NTP/Chrony time synchronization
+#
+# Installs and configures chrony (RHEL 7+, Ubuntu 18.04+) or ntpd
+# for time synchronization with specified NTP servers.
+
+# --- Install chrony ---
+
+- name: Install chrony (RedHat family)
+  yum:
+    name: chrony
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Install chrony (Debian family)
+  apt:
+    name: chrony
+    state: present
+  when: ansible_os_family == "Debian"
+
+# --- Configure chrony ---
+
+- name: Deploy chrony configuration
+  template:
+    src: chrony.conf.j2
+    dest: "{{ ntp_chrony_conf_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  notify: restart chrony
+
+# --- Enable and start service ---
+
+- name: Enable and start chronyd
+  service:
+    name: "{{ ntp_chrony_service_name }}"
+    state: started
+    enabled: true
+
+# --- Verification ---
+
+- name: Check chrony synchronization status
+  command: chronyc tracking
+  register: chrony_status
+  changed_when: false
+  failed_when: false
+
+- name: Display time sync status
+  debug:
+    msg: "{{ chrony_status.stdout_lines | default(['chrony not responding']) }}"

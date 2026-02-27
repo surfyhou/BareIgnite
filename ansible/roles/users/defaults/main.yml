@@ -1,0 +1,34 @@
+---
+# users/defaults/main.yml -- Default variables for the users role
+
+# Admin group name
+users_admin_group: "sysadmin"
+
+# List of admin users to create
+# Each entry: { name, comment, groups, shell, password, ssh_keys }
+users_admin_list: []
+#   - name: admin
+#     comment: "System Administrator"
+#     groups:
+#       - sysadmin
+#       - wheel
+#     shell: /bin/bash
+#     ssh_keys:
+#       - "ssh-rsa AAAAB3... admin@ops"
+
+# SSH keys to deploy for root user (from spec defaults.ssh_keys)
+users_root_ssh_keys: []
+
+# Whether to make authorized_keys exclusive (remove unmanaged keys)
+users_ssh_key_exclusive: false
+
+# Whether admin group gets passwordless sudo
+users_sudo_nopasswd: true
+
+# Whether to manage /etc/login.defs password policy
+users_manage_password_policy: false
+
+# Password aging policy
+users_password_min_days: 1
+users_password_max_days: 90
+users_password_warn_days: 14

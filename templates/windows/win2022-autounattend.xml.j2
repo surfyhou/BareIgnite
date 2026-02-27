@@ -1,0 +1,331 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  BareIgnite: Windows Server 2022 Autounattend.xml
+  Generated for: {{ hostname }}
+  Template: win2022-autounattend.xml.j2
+
+  This file automates the Windows Server 2022 installation process.
+  Install flow: WinPE boots -> maps SMB share -> setup.exe /unattend:<this file>
+-->
+<unattend xmlns="urn:schemas-microsoft-com:unattend"
+          xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+
+  <!-- ================================================================== -->
+  <!-- Pass 1: windowsPE - Runs during Windows PE phase                   -->
+  <!-- Configures locale, disk partitioning, and install source           -->
+  <!-- ================================================================== -->
+  <settings pass="windowsPE">
+
+    <!-- International / Locale settings for the PE environment -->
+    <component name="Microsoft-Windows-International-Core-WinPE"
+               processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral"
+               versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <SetupUILanguage>
+        <UILanguage>{{ locale | default('en-US') }}</UILanguage>
+      </SetupUILanguage>
+      <InputLocale>{{ input_locale | default('0409:00000409') }}</InputLocale>
+      <SystemLocale>{{ system_locale | default('en-US') }}</SystemLocale>
+      <UILanguage>{{ ui_language | default('en-US') }}</UILanguage>
+      <UserLocale>{{ user_locale | default('en-US') }}</UserLocale>
+    </component>
+
+    <!-- Setup configuration: disk layout and install source -->
+    <component name="Microsoft-Windows-Setup"
+               processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral"
+               versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+
+      <!-- Disk partitioning - GPT layout for UEFI -->
+      <DiskConfiguration>
+        <Disk wcm:action="add">
+          <DiskID>0</DiskID>
+          <WillWipeDisk>true</WillWipeDisk>
+          <CreatePartitions>
+            <!-- EFI System Partition (ESP) -->
+            <CreatePartition wcm:action="add">
+              <Order>1</Order>
+              <Size>600</Size>
+              <Type>EFI</Type>
+            </CreatePartition>
+            <!-- Microsoft Reserved Partition (MSR) -->
+            <CreatePartition wcm:action="add">
+              <Order>2</Order>
+              <Size>128</Size>
+              <Type>MSR</Type>
+            </CreatePartition>
+            <!-- Windows OS Partition -->
+            <CreatePartition wcm:action="add">
+              <Order>3</Order>
+              <Extend>true</Extend>
+              <Type>Primary</Type>
+            </CreatePartition>
+          </CreatePartitions>
+          <ModifyPartitions>
+            <!-- Format ESP as FAT32 -->
+            <ModifyPartition wcm:action="add">
+              <Order>1</Order>
+              <PartitionID>1</PartitionID>
+              <Format>FAT32</Format>
+              <Label>System</Label>
+            </ModifyPartition>
+            <!-- MSR partition - no formatting needed -->
+            <ModifyPartition wcm:action="add">
+              <Order>2</Order>
+              <PartitionID>2</PartitionID>
+            </ModifyPartition>
+            <!-- Windows partition - NTFS -->
+            <ModifyPartition wcm:action="add">
+              <Order>3</Order>
+              <PartitionID>3</PartitionID>
+              <Format>NTFS</Format>
+              <Label>Windows</Label>
+              <Letter>C</Letter>
+            </ModifyPartition>
+          </ModifyPartitions>
+        </Disk>
+      </DiskConfiguration>
+
+      <!-- Install source: WIM from SMB share -->
+      <ImageInstall>
+        <OSImage>
+          <InstallFrom>
+            <Path>\\{{ control_ip }}\{{ samba_share_name | default('wininstall') }}\{{ os_id }}\sources\install.wim</Path>
+          </InstallFrom>
+          <InstallTo>
+            <DiskID>0</DiskID>
+            <PartitionID>3</PartitionID>
+          </InstallTo>
+        </OSImage>
+      </ImageInstall>
+
+      <!-- User data and EULA acceptance -->
+      <UserData>
+        <AcceptEula>true</AcceptEula>
+        <FullName>BareIgnite</FullName>
+        <Organization>BareIgnite Provisioning</Organization>
+{% if product_key %}
+        <ProductKey>
+          <Key>{{ product_key }}</Key>
+        </ProductKey>
+{% endif %}
+      </UserData>
+    </component>
+  </settings>
+
+  <!-- ================================================================== -->
+  <!-- Pass 4: specialize - Runs after image is applied to disk           -->
+  <!-- Configures computer name, timezone, network                        -->
+  <!-- ================================================================== -->
+  <settings pass="specialize">
+
+    <!-- Shell settings: hostname and timezone -->
+    <component name="Microsoft-Windows-Shell-Setup"
+               processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral"
+               versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <ComputerName>{{ hostname }}</ComputerName>
+      <TimeZone>{{ win_timezone | default('China Standard Time') }}</TimeZone>
+      <RegisteredOrganization>BareIgnite Provisioning</RegisteredOrganization>
+      <RegisteredOwner>Administrator</RegisteredOwner>
+    </component>
+
+    <!-- Enable Remote Desktop for post-install management -->
+    <component name="Microsoft-Windows-TerminalServices-LocalSessionManager"
+               processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral"
+               versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <fDenyTSConnections>false</fDenyTSConnections>
+    </component>
+
+    <!-- Firewall: allow Remote Desktop through -->
+    <component name="Networking-MPSSVC-Svc"
+               processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral"
+               versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <FirewallGroups>
+        <FirewallGroup wcm:action="add" wcm:keyValue="RemoteDesktop">
+          <Active>true</Active>
+          <Group>Remote Desktop</Group>
+          <Profile>all</Profile>
+        </FirewallGroup>
+      </FirewallGroups>
+    </component>
+
+{% if data_ip %}
+    <!-- Static IP configuration for data network -->
+    <component name="Microsoft-Windows-TCPIP"
+               processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral"
+               versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <Interfaces>
+        <Interface wcm:action="add">
+          <Identifier>Ethernet</Identifier>
+          <Ipv4Settings>
+            <DhcpEnabled>false</DhcpEnabled>
+          </Ipv4Settings>
+          <UnicastIpAddresses>
+            <IpAddress wcm:action="add" wcm:keyValue="1">{{ data_ip }}/{{ data_prefix | default('24') }}</IpAddress>
+          </UnicastIpAddresses>
+          <Routes>
+{% if data_gateway %}
+            <Route wcm:action="add">
+              <Identifier>1</Identifier>
+              <NextHopAddress>{{ data_gateway }}</NextHopAddress>
+              <Prefix>0.0.0.0/0</Prefix>
+              <Metric>10</Metric>
+            </Route>
+{% endif %}
+          </Routes>
+        </Interface>
+      </Interfaces>
+    </component>
+
+{% if data_dns %}
+    <!-- DNS client configuration -->
+    <component name="Microsoft-Windows-DNS-Client"
+               processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral"
+               versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <Interfaces>
+        <Interface wcm:action="add">
+          <Identifier>Ethernet</Identifier>
+          <DNSServerSearchOrder>
+            <IpAddress wcm:action="add" wcm:keyValue="1">{{ data_dns }}</IpAddress>
+          </DNSServerSearchOrder>
+        </Interface>
+      </Interfaces>
+    </component>
+{% endif %}
+{% endif %}
+  </settings>
+
+  <!-- ================================================================== -->
+  <!-- Pass 7: oobeSystem - Runs at first logon (Out-of-Box Experience)   -->
+  <!-- Configures admin password, skips OOBE screens, runs callbacks      -->
+  <!-- ================================================================== -->
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-Shell-Setup"
+               processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral"
+               versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+
+      <!-- Skip all OOBE interactive screens -->
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <ProtectYourPC>3</ProtectYourPC>
+        <NetworkLocation>Work</NetworkLocation>
+      </OOBE>
+
+      <!-- Set Administrator password -->
+      <UserAccounts>
+        <AdministratorPassword>
+          <Value>{{ admin_password }}</Value>
+          <PlainText>true</PlainText>
+        </AdministratorPassword>
+      </UserAccounts>
+
+      <!-- Auto-logon for first-boot configuration (runs once) -->
+      <AutoLogon>
+        <Enabled>true</Enabled>
+        <Username>Administrator</Username>
+        <Password>
+          <Value>{{ admin_password }}</Value>
+          <PlainText>true</PlainText>
+        </Password>
+        <LogonCount>1</LogonCount>
+      </AutoLogon>
+
+      <!-- First logon commands: enable WinRM and send callback -->
+      <FirstLogonCommands>
+        <!-- Enable WinRM for Ansible remote management -->
+        <SynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <CommandLine>powershell -Command "Enable-PSRemoting -Force -SkipNetworkProfileCheck"</CommandLine>
+          <Description>Enable PowerShell Remoting</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+
+        <!-- Configure WinRM for basic auth (required for Ansible) -->
+        <SynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <CommandLine>powershell -Command "Set-Item WSMan:\localhost\Service\Auth\Basic -Value $true"</CommandLine>
+          <Description>Enable WinRM Basic Auth</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+
+        <!-- Allow unencrypted WinRM traffic (for initial provisioning only) -->
+        <SynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <CommandLine>powershell -Command "Set-Item WSMan:\localhost\Service\AllowUnencrypted -Value $true"</CommandLine>
+          <Description>Allow unencrypted WinRM</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+
+        <!-- Configure WinRM listener -->
+        <SynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <CommandLine>powershell -Command "winrm quickconfig -q"</CommandLine>
+          <Description>Quick configure WinRM</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+
+        <!-- Open WinRM firewall port -->
+        <SynchronousCommand wcm:action="add">
+          <Order>5</Order>
+          <CommandLine>powershell -Command "New-NetFirewallRule -DisplayName 'WinRM HTTP' -Direction Inbound -LocalPort 5985 -Protocol TCP -Action Allow"</CommandLine>
+          <Description>Open WinRM firewall port</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+
+        <!-- Signal installation completion to BareIgnite control node -->
+        <SynchronousCommand wcm:action="add">
+          <Order>6</Order>
+          <CommandLine>powershell -Command "Invoke-WebRequest -Uri 'http://{{ control_ip }}:{{ callback_port | default('8888') }}/callback?server={{ hostname }}&amp;status=success' -UseBasicParsing"</CommandLine>
+          <Description>BareIgnite installation callback</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+
+        <!-- Disable auto-logon after first run -->
+        <SynchronousCommand wcm:action="add">
+          <Order>7</Order>
+          <CommandLine>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoAdminLogon /t REG_SZ /d 0 /f</CommandLine>
+          <Description>Disable auto-logon</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+      </FirstLogonCommands>
+    </component>
+
+    <!-- International settings for the installed OS -->
+    <component name="Microsoft-Windows-International-Core"
+               processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral"
+               versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <InputLocale>{{ input_locale | default('0409:00000409') }}</InputLocale>
+      <SystemLocale>{{ system_locale | default('en-US') }}</SystemLocale>
+      <UILanguage>{{ ui_language | default('en-US') }}</UILanguage>
+      <UserLocale>{{ user_locale | default('en-US') }}</UserLocale>
+    </component>
+  </settings>
+</unattend>

@@ -1,0 +1,27 @@
+---
+# network/defaults/main.yml -- Default variables for the network role
+
+# Default bond mode (IEEE 802.3ad / LACP)
+network_default_bond_mode: "802.3ad"
+
+# DNS servers (overridden from spec network.data[].dns)
+network_dns_servers: []
+
+# DNS search domains
+network_dns_search: []
+
+# Whether to manage /etc/resolv.conf directly
+# Set to false if NetworkManager or systemd-resolved manages DNS
+network_manage_resolv_conf: false
+
+# Data NIC configurations (populated from spec per-server)
+# Each entry: { name, device, mac, ip, prefix, gateway, dns, mode }
+network_data_nics: []
+
+# Bond configurations (populated from spec per-server)
+# Each entry: { name, mode, slaves, ip, prefix, gateway, dns }
+network_bonds: []
+
+# VLAN configurations (populated from spec per-server)
+# Each entry: { id, parent, ip, prefix, gateway }
+network_vlans: []

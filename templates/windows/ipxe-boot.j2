@@ -1,0 +1,36 @@
+#!ipxe
+# BareIgnite: iPXE boot script for {{ hostname }} ({{ os_id }})
+# Loads wimboot + WinPE components over HTTP for Windows installation
+#
+# Boot chain: iPXE -> wimboot -> boot.wim (WinPE) -> SMB -> setup.exe /unattend
+
+set server {{ control_ip }}
+set http_port {{ http_port | default('80') }}
+set os_id {{ os_id }}
+
+echo ============================================================
+echo  BareIgnite Windows PXE Installer
+echo  Server: {{ hostname }}
+echo  OS: {{ os_id }}
+echo ============================================================
+echo.
+
+echo Loading wimboot...
+kernel http://${server}:${http_port}/pxe/wimboot
+
+echo Loading BCD...
+initrd --name BCD       http://${server}:${http_port}/images/${os_id}/boot/BCD        BCD
+
+echo Loading boot.sdi...
+initrd --name boot.sdi  http://${server}:${http_port}/images/${os_id}/boot/boot.sdi   boot.sdi
+
+echo Loading boot.wim (this may take several minutes)...
+initrd --name boot.wim  http://${server}:${http_port}/images/${os_id}/sources/boot.wim boot.wim
+
+echo Loading WinPE configuration...
+initrd --name winpeshl.ini http://${server}:${http_port}/configs/{{ hostname }}/winpeshl.ini winpeshl.ini
+initrd --name startup.bat  http://${server}:${http_port}/configs/{{ hostname }}/startup.bat  startup.bat
+
+echo.
+echo Starting Windows PE...
+boot

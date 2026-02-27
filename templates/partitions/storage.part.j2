@@ -1,0 +1,24 @@
+# BareIgnite partition layout: storage
+# Minimal root with a large /data volume for storage servers.
+# {{ ansible_managed }}
+#
+# Layout:
+#   /boot/efi  600 MiB  (UEFI only)
+#   /boot      1 GiB
+#   LVM vg_store:
+#     /       30 GiB
+#     /data   50 GiB+ (grow, bulk storage mount point)
+#     swap     8 GiB
+
+clearpart --all --initlabel
+
+{% if boot_mode == "uefi" %}
+part /boot/efi --fstype=efi --size=600
+{% endif %}
+part /boot --fstype=xfs --size=1024
+part pv.01 --size=1 --grow
+
+volgroup vg_store pv.01
+logvol /     --vgname=vg_store --name=lv_root --fstype=xfs --size=30720
+logvol /data --vgname=vg_store --name=lv_data --fstype=xfs --size=51200 --grow
+logvol swap  --vgname=vg_store --name=lv_swap --size=8192

@@ -1,0 +1,5 @@
+---
+# database/handlers/main.yml -- Handlers for the database role
+
+- name: reload sysctl
+  command: sysctl --system

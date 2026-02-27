@@ -1,0 +1,7 @@
+---
+# ntp/handlers/main.yml -- Handlers for the NTP role
+
+- name: restart chrony
+  service:
+    name: "{{ ntp_chrony_service_name }}"
+    state: restarted

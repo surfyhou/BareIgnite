@@ -1,0 +1,34 @@
+# BareIgnite PXE per-host config for {{ hostname }} ({{ os_id }})
+# Generated -- do not edit manually
+# Boot mode: BIOS
+# {{ ansible_managed }}
+
+DEFAULT install
+PROMPT 0
+TIMEOUT 50
+
+{% if os_family == "rhel" %}
+LABEL install
+  MENU LABEL Install {{ os_id }} on {{ hostname }}
+  KERNEL {{ http_url }}/{{ kernel_path }}
+  APPEND initrd={{ http_url }}/{{ initrd_path }} inst.ks={{ ks_url }} inst.repo={{ repo_url }} ip=dhcp quiet
+{% elif os_family == "debian" %}
+LABEL install
+  MENU LABEL Install {{ os_id }} on {{ hostname }}
+  KERNEL {{ http_url }}/{{ kernel_path }}
+  APPEND initrd={{ http_url }}/{{ initrd_path }} ip=dhcp cloud-config-url=/dev/null autoinstall ds=nocloud-net;s={{ ks_url }}
+{% elif os_family == "esxi" %}
+LABEL install
+  MENU LABEL Install {{ os_id }} on {{ hostname }}
+  KERNEL {{ http_url }}/{{ kernel_path }}
+  APPEND -c {{ ks_url }}
+{% else %}
+LABEL install
+  MENU LABEL Install {{ os_id }} on {{ hostname }}
+  KERNEL {{ http_url }}/{{ kernel_path }}
+  APPEND initrd={{ http_url }}/{{ initrd_path }} {{ boot_params }}
+{% endif %}
+
+LABEL local
+  MENU LABEL Boot from local disk
+  LOCALBOOT 0

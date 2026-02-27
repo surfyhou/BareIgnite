@@ -1,0 +1,198 @@
+---
+# security/tasks/main.yml -- Security hardening
+#
+# SSH hardening, firewall configuration, SELinux/AppArmor,
+# audit logging, and service hardening.
+
+# --- SSH hardening ---
+
+- name: Deploy hardened sshd_config
+  template:
+    src: sshd_config.j2
+    dest: /etc/ssh/sshd_config
+    owner: root
+    group: root
+    mode: "0600"
+    backup: true
+    validate: "sshd -t -f %s"
+  notify: restart sshd
+
+# --- Firewall (RedHat - firewalld) ---
+
+- name: Configure firewalld (RedHat family)
+  block:
+    - name: Ensure firewalld is installed
+      yum:
+        name: firewalld
+        state: present
+
+    - name: Enable and start firewalld
+      service:
+        name: firewalld
+        state: started
+        enabled: true
+
+    - name: Configure firewalld default zone
+      command: "firewall-cmd --set-default-zone={{ security_firewalld_default_zone }}"
+      changed_when: true
+
+    - name: Allow SSH through firewall
+      firewalld:
+        service: ssh
+        permanent: true
+        state: enabled
+        zone: "{{ security_firewalld_default_zone }}"
+
+    - name: Allow additional firewall services
+      firewalld:
+        service: "{{ item }}"
+        permanent: true
+        state: enabled
+        zone: "{{ security_firewalld_default_zone }}"
+      loop: "{{ security_firewall_allowed_services }}"
+
+    - name: Allow additional firewall ports
+      firewalld:
+        port: "{{ item }}"
+        permanent: true
+        state: enabled
+        zone: "{{ security_firewalld_default_zone }}"
+      loop: "{{ security_firewall_allowed_ports }}"
+
+    - name: Reload firewalld
+      command: firewall-cmd --reload
+      changed_when: true
+  when:
+    - ansible_os_family == "RedHat"
+    - security_configure_firewall | bool
+
+# --- Firewall (Debian - ufw) ---
+
+- name: Configure ufw (Debian family)
+  block:
+    - name: Ensure ufw is installed
+      apt:
+        name: ufw
+        state: present
+
+    - name: Set ufw default deny incoming
+      ufw:
+        direction: incoming
+        default: deny
+
+    - name: Set ufw default allow outgoing
+      ufw:
+        direction: outgoing
+        default: allow
+
+    - name: Allow SSH through ufw
+      ufw:
+        rule: allow
+        port: "{{ security_ssh_port | string }}"
+        proto: tcp
+
+    - name: Allow additional services through ufw
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop: "{{ security_ufw_allowed_ports }}"
+
+    - name: Enable ufw
+      ufw:
+        state: enabled
+  when:
+    - ansible_os_family == "Debian"
+    - security_configure_firewall | bool
+
+# --- SELinux (RedHat) ---
+
+- name: Configure SELinux
+  block:
+    - name: Set SELinux mode
+      selinux:
+        policy: targeted
+        state: "{{ security_selinux_mode }}"
+
+    - name: Ensure SELinux is in the desired mode at next boot
+      lineinfile:
+        path: /etc/selinux/config
+        regexp: '^SELINUX='
+        line: "SELINUX={{ security_selinux_mode }}"
+        backup: true
+  when:
+    - ansible_os_family == "RedHat"
+    - security_manage_selinux | bool
+
+# --- AppArmor (Debian) ---
+
+- name: Ensure AppArmor is enabled (Debian)
+  service:
+    name: apparmor
+    state: started
+    enabled: true
+  when:
+    - ansible_os_family == "Debian"
+    - security_manage_apparmor | bool
+  failed_when: false
+
+# --- Disable unused services ---
+
+- name: Disable insecure/unnecessary services
+  service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ security_disable_services }}"
+  failed_when: false
+
+# --- Audit logging ---
+
+- name: Install audit packages (RedHat)
+  yum:
+    name:
+      - audit
+      - audit-libs
+    state: present
+  when:
+    - ansible_os_family == "RedHat"
+    - security_configure_audit | bool
+
+- name: Install audit packages (Debian)
+  apt:
+    name:
+      - auditd
+      - audispd-plugins
+    state: present
+  when:
+    - ansible_os_family == "Debian"
+    - security_configure_audit | bool
+
+- name: Enable and start audit service
+  service:
+    name: auditd
+    state: started
+    enabled: true
+  when: security_configure_audit | bool
+
+# --- Kernel hardening ---
+
+- name: Apply security-related sysctl parameters
+  sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-bareignite-security.conf
+    reload: true
+    state: present
+  loop: "{{ security_sysctl_params | dict2items }}"
+  when: security_sysctl_params | length > 0
+
+# --- Umask ---
+
+- name: Set secure default umask
+  lineinfile:
+    path: /etc/profile
+    regexp: '^umask'
+    line: "umask {{ security_umask }}"
+    backup: true
+  when: security_set_umask | bool

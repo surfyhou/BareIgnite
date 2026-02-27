@@ -1,0 +1,33 @@
+---
+# network/tasks/configure-nic.yml -- Configure a standalone data NIC
+#
+# Called in a loop with 'nic' variable containing:
+#   name, device, ip, prefix, gateway, dns, mode
+
+# RedHat: use ifcfg files
+- name: "Configure NIC {{ nic.name }} (RedHat)"
+  block:
+    - name: "Create ifcfg file for {{ nic.name }}"
+      template:
+        src: ifcfg-static.j2
+        dest: "/etc/sysconfig/network-scripts/ifcfg-{{ nic.device | default(nic.name) }}"
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
+      vars:
+        nic_name: "{{ nic.name }}"
+        nic_device: "{{ nic.device | default(nic.name) }}"
+        ip_address: "{{ nic.ip }}"
+        prefix: "{{ nic.prefix | default(24) }}"
+        gateway: "{{ nic.gateway | default('') }}"
+        dns1: "{{ nic.dns[0] | default(network_dns_servers[0] | default('')) }}"
+        nic_mac: "{{ nic.mac | default('') }}"
+        boot_proto: "{{ nic.mode | default('static') }}"
+  when: ansible_os_family == "RedHat"
+
+# Debian: netplan handles NIC config in the main netplan template
+- name: "Record NIC {{ nic.name }} for netplan (Debian)"
+  debug:
+    msg: "NIC {{ nic.name }} will be configured via netplan template"
+  when: ansible_os_family == "Debian"

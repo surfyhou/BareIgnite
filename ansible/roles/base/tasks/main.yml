@@ -1,0 +1,111 @@
+---
+# base/tasks/main.yml -- Base OS configuration applied to all servers
+#
+# Sets hostname, configures /etc/hosts, installs essential packages,
+# configures timezone and locale, disables unnecessary services.
+
+- name: Set hostname
+  hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: Configure /etc/hosts with all cluster members
+  template:
+    src: hosts.j2
+    dest: /etc/hosts
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+
+- name: Set timezone
+  timezone:
+    name: "{{ base_timezone }}"
+
+- name: Set locale (RedHat family)
+  command: localectl set-locale LANG={{ base_locale }}
+  when: ansible_os_family == "RedHat"
+  changed_when: true
+
+- name: Set locale (Debian family)
+  block:
+    - name: Generate locale
+      locale_gen:
+        name: "{{ base_locale }}"
+        state: present
+
+    - name: Set default locale
+      command: update-locale LANG={{ base_locale }}
+      changed_when: true
+  when: ansible_os_family == "Debian"
+
+# --- Package management ---
+
+- name: Configure local yum repos (RedHat family, offline mode)
+  template:
+    src: local-repo.repo.j2
+    dest: /etc/yum.repos.d/bareignite-local.repo
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - ansible_os_family == "RedHat"
+    - base_local_repo_url is defined
+    - base_local_repo_url | length > 0
+
+- name: Install base packages (RedHat family)
+  yum:
+    name: "{{ base_packages_rhel }}"
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Install base packages (Debian family)
+  apt:
+    name: "{{ base_packages_debian }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_os_family == "Debian"
+
+# --- Service management ---
+
+- name: Disable unnecessary services
+  service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ base_disable_services }}"
+  failed_when: false
+
+# --- Kernel parameters ---
+
+- name: Apply common sysctl settings
+  sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-bareignite-base.conf
+    reload: true
+    state: present
+  loop: "{{ base_sysctl_params | dict2items }}"
+  when: base_sysctl_params | length > 0
+
+# --- Miscellaneous ---
+
+- name: Create standard directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ base_create_dirs }}"
+
+- name: Set default umask in /etc/profile.d
+  copy:
+    content: |
+      # Set by BareIgnite post-install
+      umask {{ base_umask }}
+    dest: /etc/profile.d/bareignite-umask.sh
+    owner: root
+    group: root
+    mode: "0644"
+  when: base_umask is defined

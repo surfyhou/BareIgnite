@@ -1,0 +1,6 @@
+# BareIgnite partition layout: generic
+# Simple automatic LVM partitioning suitable for most workloads.
+# {{ ansible_managed }}
+
+clearpart --all --initlabel
+autopart --type=lvm

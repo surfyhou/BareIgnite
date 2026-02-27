@@ -1,0 +1,24 @@
+---
+# ntp/defaults/main.yml -- Default variables for the NTP role
+
+# NTP servers to synchronize with (overridden from spec)
+ntp_servers:
+  - "ntp.aliyun.com"
+  - "ntp1.aliyun.com"
+  - "ntp.tencent.com"
+
+# Path to chrony configuration file
+ntp_chrony_conf_path: "/etc/chrony.conf"
+
+# Chrony service name (chronyd on RHEL, chrony on Debian)
+ntp_chrony_service_name: >-
+  {{ 'chronyd' if ansible_os_family == 'RedHat' else 'chrony' }}
+
+# Allow NTP clients from local network (empty = no serving)
+ntp_allow_networks: []
+
+# Enable chrony as NTP server for local network
+ntp_serve_time: false
+
+# Timezone (informational, actual timezone set by base role)
+ntp_timezone: "Asia/Shanghai"

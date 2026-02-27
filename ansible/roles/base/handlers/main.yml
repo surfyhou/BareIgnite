@@ -1,0 +1,7 @@
+---
+# base/handlers/main.yml -- Handlers for the base role
+
+- name: restart networking
+  service:
+    name: "{{ 'NetworkManager' if ansible_os_family == 'RedHat' else 'networking' }}"
+    state: restarted

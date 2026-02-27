@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BareIgnite Forge</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x1f525;</text></svg>">
+</head>
+<body>
+
+<div id="app">
+  <div class="app-layout">
+
+    <!-- ===== Sidebar Backdrop (mobile) ===== -->
+    <div
+      class="sidebar-backdrop"
+      :class="{ visible: sidebarOpen }"
+      @click="closeSidebar"
+    ></div>
+
+    <!-- ===== Sidebar ===== -->
+    <aside class="sidebar" :class="{ open: sidebarOpen }">
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-icon">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+          </svg>
+        </div>
+        <div class="sidebar-brand-text">BareIgnite <span>Forge</span></div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button
+          v-for="item in navItems"
+          :key="item.id"
+          class="sidebar-nav-item"
+          :class="{ active: currentRoute === item.id }"
+          @click="setRoute(item.id)"
+        >
+          <span class="nav-icon" v-html="ICONS[item.icon]"></span>
+          <span>{{ item.label }}</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-version">v0.1.0</div>
+      </div>
+    </aside>
+
+    <!-- ===== Main Content ===== -->
+    <main class="main-content">
+
+      <!-- Top Bar -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="menu-toggle" @click="toggleSidebar">
+            <svg v-if="!sidebarOpen" viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            <svg v-else viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+          <h1 class="topbar-title">{{ pageTitle }}</h1>
+        </div>
+        <div class="topbar-right">
+          <button class="theme-toggle" @click="toggleTheme" :title="darkMode ? 'Switch to light mode' : 'Switch to dark mode'">
+            <span v-html="darkMode ? ICONS.sun : ICONS.moon"></span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Page Content -->
+      <div class="page-content">
+
+        <!-- =============================================
+             DASHBOARD
+             ============================================= -->
+        <template v-if="currentRoute === 'dashboard'">
+
+          <!-- Loading -->
+          <div v-if="dashLoading" class="loading-page">
+            <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/></svg>
+            <span>Loading dashboard...</span>
+          </div>
+
+          <template v-else>
+            <!-- Stat cards -->
+            <div class="stat-grid">
+              <div class="stat-card">
+                <div class="stat-icon blue" v-html="ICONS.hdd"></div>
+                <div class="stat-info">
+                  <div class="stat-label">Cache Usage</div>
+                  <div class="stat-value">{{ formatBytes(dashData.cache_usage.used) }}</div>
+                  <div class="stat-detail">{{ cachePercent }}% of {{ formatBytes(dashData.cache_usage.total) }}</div>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon green" v-html="ICONS.disc"></div>
+                <div class="stat-info">
+                  <div class="stat-label">Cached Images</div>
+                  <div class="stat-value">{{ dashData.cache_usage.items }}</div>
+                  <div class="stat-detail">OS images in local cache</div>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon orange" v-html="ICONS.build"></div>
+                <div class="stat-info">
+                  <div class="stat-label">Recent Builds</div>
+                  <div class="stat-value">{{ dashData.recent_builds.length }}</div>
+                  <div class="stat-detail">Builds in progress or recent</div>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon purple" v-html="ICONS.activity"></div>
+                <div class="stat-info">
+                  <div class="stat-label">Uptime</div>
+                  <div class="stat-value">{{ dashData.system_status.uptime }}</div>
+                  <div class="stat-detail">Forge v{{ dashData.system_status.version }}</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid-2">
+              <!-- Recent builds -->
+              <div class="card">
+                <div class="card-header">
+                  <div>
+                    <div class="card-title">Recent Builds</div>
+                    <div class="card-subtitle">Latest build activity</div>
+                  </div>
+                  <button class="btn btn-sm btn-secondary" @click="setRoute('history')">View All</button>
+                </div>
+                <div class="table-container" style="border:none; box-shadow:none;">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>OS</th>
+                        <th>Media</th>
+                        <th>Status</th>
+                        <th>Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="b in dashData.recent_builds" :key="b.id">
+                        <td class="font-medium">{{ b.os }}</td>
+                        <td>{{ b.media }}</td>
+                        <td>
+                          <span class="badge" :class="statusBadgeClass(b.status)">
+                            <span class="badge-dot"></span>
+                            {{ b.status }}
+                          </span>
+                        </td>
+                        <td class="text-muted text-sm">{{ formatDate(b.created_at) }}</td>
+                      </tr>
+                      <tr v-if="!dashData.recent_builds.length">
+                        <td colspan="4" class="table-empty">No recent builds.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Quick Actions + Services -->
+              <div style="display:flex; flex-direction:column; gap:16px;">
+                <div class="card">
+                  <div class="card-header">
+                    <div class="card-title">Quick Actions</div>
+                  </div>
+                  <div class="quick-actions">
+                    <button class="quick-action-btn" @click="setRoute('build')">
+                      <span v-html="ICONS.build"></span>
+                      New Build
+                    </button>
+                    <button class="quick-action-btn" @click="setRoute('images')">
+                      <span v-html="ICONS.upload"></span>
+                      Import Image
+                    </button>
+                    <button class="quick-action-btn" @click="setRoute('updates')">
+                      <span v-html="ICONS.updates"></span>
+                      Check Updates
+                    </button>
+                    <button class="quick-action-btn" @click="loadDashboard()">
+                      <span v-html="ICONS.refresh"></span>
+                      Refresh
+                    </button>
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="card-header">
+                    <div>
+                      <div class="card-title">System Services</div>
+                      <div class="card-subtitle">Component health status</div>
+                    </div>
+                  </div>
+                  <div style="display:flex; flex-direction:column; gap:10px;">
+                    <div
+                      v-for="svc in dashData.system_status.services"
+                      :key="svc.name"
+                      style="display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--color-border);"
+                    >
+                      <span class="text-sm font-medium">{{ svc.name }}</span>
+                      <span class="badge" :class="statusBadgeClass(svc.status)">
+                        <span class="badge-dot"></span>
+                        {{ svc.status }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Cache bar -->
+                <div class="card">
+                  <div class="card-header">
+                    <div class="card-title">Cache Storage</div>
+                    <span class="text-sm text-muted">{{ formatBytes(dashData.cache_usage.used) }} / {{ formatBytes(dashData.cache_usage.total) }}</span>
+                  </div>
+                  <div class="progress-bar">
+                    <div
+                      class="progress-bar-fill"
+                      :class="cacheBarColor"
+                      :style="{ width: cachePercent + '%' }"
+                    ></div>
+                  </div>
+                  <div class="progress-label">
+                    <span>{{ cachePercent }}% used</span>
+                    <span>{{ formatBytes(dashData.cache_usage.total - dashData.cache_usage.used) }} free</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+        </template>
+
+        <!-- =============================================
+             IMAGES
+             ============================================= -->
+        <template v-if="currentRoute === 'images'">
+
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">Cached Images</h2>
+              <p class="section-description">
+                {{ images.length }} image{{ images.length !== 1 ? 's' : '' }} cached
+                ({{ formatBytes(totalCacheSize) }} total)
+              </p>
+            </div>
+            <div class="btn-group">
+              <button class="btn btn-secondary" @click="loadImages()" :disabled="imgLoading">
+                <span v-html="ICONS.refresh"></span> Refresh
+              </button>
+              <label class="btn btn-primary" style="cursor:pointer;">
+                <span v-html="ICONS.upload"></span> Import ISO
+                <input type="file" accept=".iso,.img" multiple hidden @change="handleImageFileSelect">
+              </label>
+            </div>
+          </div>
+
+          <!-- Drag & Drop Zone -->
+          <div
+            class="dropzone mb-2"
+            :class="{ dragover: imgDragover }"
+            @dragover.prevent="imgDragover = true"
+            @dragleave.prevent="imgDragover = false"
+            @drop.prevent="handleImageDrop"
+            @click="$refs.fileInput && $refs.fileInput.click()"
+          >
+            <div class="dropzone-icon" v-html="ICONS.upload"></div>
+            <div v-if="!imgUploading" class="dropzone-text">
+              Drag and drop ISO/IMG files here, or click to browse
+            </div>
+            <div v-if="!imgUploading" class="dropzone-hint">
+              Supported formats: .iso, .img
+            </div>
+            <div v-if="imgUploading" class="dropzone-progress" style="width:100%; max-width:400px; margin:0 auto;">
+              <div class="progress-bar progress-bar-lg">
+                <div class="progress-bar-fill" :style="{ width: imgUploadProgress + '%' }"></div>
+              </div>
+              <div class="progress-text">Importing... {{ imgUploadProgress }}%</div>
+              <button class="btn btn-sm btn-ghost mt-1" @click.stop="cancelUpload">Cancel</button>
+            </div>
+          </div>
+
+          <!-- Images Table -->
+          <div v-if="imgLoading" class="loading-page">
+            <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/></svg>
+            <span>Loading images...</span>
+          </div>
+
+          <div v-else class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>OS</th>
+                  <th>Version</th>
+                  <th>Arch</th>
+                  <th>Type</th>
+                  <th>Size</th>
+                  <th>Cached</th>
+                  <th style="width:120px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="img in images" :key="img.id">
+                  <td>
+                    <span class="font-medium truncate" style="max-width:280px; display:inline-block;">{{ img.name }}</span>
+                  </td>
+                  <td>{{ img.os }}</td>
+                  <td><span class="text-mono text-sm">{{ img.version }}</span></td>
+                  <td><span class="text-mono text-sm">{{ img.arch }}</span></td>
+                  <td>
+                    <span class="badge badge-info">{{ img.type }}</span>
+                  </td>
+                  <td class="text-mono text-sm">{{ formatBytes(img.size) }}</td>
+                  <td class="text-muted text-sm">{{ formatDate(img.cached_at) }}</td>
+                  <td>
+                    <div class="btn-group">
+                      <button
+                        class="btn btn-sm btn-icon btn-ghost"
+                        title="Download"
+                        @click="downloadBuild(img)"
+                      >
+                        <span v-html="ICONS.download"></span>
+                      </button>
+                      <button
+                        class="btn btn-sm btn-icon btn-ghost text-danger"
+                        title="Delete"
+                        @click="imgDeleteConfirm = img"
+                      >
+                        <span v-html="ICONS.trash"></span>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="!images.length">
+                  <td colspan="8">
+                    <div class="empty-state">
+                      <span v-html="ICONS.disc"></span>
+                      <div class="empty-state-title">No images cached</div>
+                      <div class="empty-state-text">
+                        Import ISO files by dragging them into the drop zone above, or click "Import ISO" to browse.
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Delete Confirmation Modal -->
+          <div v-if="imgDeleteConfirm" class="modal-overlay" @click.self="imgDeleteConfirm = null">
+            <div class="modal">
+              <div class="modal-header">
+                <h3 class="modal-title">Delete Image</h3>
+                <button class="modal-close" @click="imgDeleteConfirm = null">
+                  <span v-html="ICONS.x"></span>
+                </button>
+              </div>
+              <div class="modal-body">
+                <p>Are you sure you want to delete <strong>{{ imgDeleteConfirm.name }}</strong>?</p>
+                <p class="text-muted text-sm mt-1">This will free {{ formatBytes(imgDeleteConfirm.size) }} of cache space. This action cannot be undone.</p>
+              </div>
+              <div class="modal-footer">
+                <button class="btn btn-secondary" @click="imgDeleteConfirm = null">Cancel</button>
+                <button class="btn btn-danger" @click="deleteImage(imgDeleteConfirm)">Delete</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- =============================================
+             BUILD WIZARD
+             ============================================= -->
+        <template v-if="currentRoute === 'build'">
+
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">Build Bootable Media</h2>
+              <p class="section-description">Create custom boot images, USB drives, or PXE bundles</p>
+            </div>
+            <button v-if="buildStep > 0 || buildProgress.active" class="btn btn-secondary" @click="resetBuild">
+              Start Over
+            </button>
+          </div>
+
+          <!-- Step indicators -->
+          <div class="wizard-steps">
+            <div
+              v-for="(step, i) in buildSteps"
+              :key="i"
+              class="wizard-step"
+              :class="{
+                active: buildStep === i,
+                completed: buildStep > i || (i === 4 && buildProgress.status === 'completed')
+              }"
+            >
+              <div class="wizard-step-number">
+                <span v-if="buildStep > i || (i === 4 && buildProgress.status === 'completed')" v-html="ICONS.check" style="width:16px;height:16px;"></span>
+                <span v-else>{{ i + 1 }}</span>
+              </div>
+              <span class="wizard-step-label">{{ step }}</span>
+            </div>
+          </div>
+
+          <!-- Step 0: Select OS -->
+          <div v-if="buildStep === 0" class="wizard-body">
+            <h3 style="margin-bottom:6px;">Select Operating System</h3>
+            <p class="text-muted text-sm mb-2">Choose the target OS for your bootable media.</p>
+            <div class="os-grid">
+              <div
+                v-for="os in osDefinitions"
+                :key="os.id"
+                class="os-card"
+                :class="{ selected: buildConfig.os && buildConfig.os.id === os.id }"
+                @click="selectOs(os)"
+              >
+                <div class="os-card-icon" v-html="ICONS.server"></div>
+                <div class="os-card-name">{{ os.name }}</div>
+                <div class="os-card-version">{{ os.version }}</div>
+                <div class="text-xs text-faint mt-1">{{ os.arch.join(', ') }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 1: Media Type -->
+          <div v-if="buildStep === 1" class="wizard-body">
+            <h3 style="margin-bottom:6px;">Select Media Type</h3>
+            <p class="text-muted text-sm mb-2">Choose the output format for your build.</p>
+            <div class="media-grid">
+              <div
+                v-for="mt in mediaTypes"
+                :key="mt.id"
+                class="media-card"
+                :class="{ selected: buildConfig.media === mt.id }"
+                @click="selectMedia(mt.id)"
+              >
+                <div class="media-card-icon" v-html="ICONS[mt.icon]"></div>
+                <div class="media-card-name">{{ mt.name }}</div>
+                <div class="media-card-desc">{{ mt.desc }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 2: Configure -->
+          <div v-if="buildStep === 2" class="wizard-body">
+            <h3 style="margin-bottom:6px;">Configure Build</h3>
+            <p class="text-muted text-sm mb-2">Customize build parameters. All fields are optional.</p>
+
+            <div class="form-row mt-2">
+              <div class="form-group">
+                <label class="form-label">Build Label <span class="form-label-hint">(optional)</span></label>
+                <input
+                  class="form-input"
+                  v-model="buildConfig.label"
+                  placeholder="e.g. datacenter-rack01"
+                >
+                <div class="form-help">A friendly name for this build</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Default Hostname</label>
+                <input
+                  class="form-input"
+                  v-model="buildConfig.hostname"
+                  placeholder="bareignite"
+                >
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group" v-if="buildConfig.os && buildConfig.os.family === 'rhel'">
+                <label class="form-label">Kickstart URL <span class="form-label-hint">(optional)</span></label>
+                <input
+                  class="form-input"
+                  v-model="buildConfig.kickstart_url"
+                  placeholder="http://..."
+                >
+                <div class="form-help">Custom kickstart file URL to embed</div>
+              </div>
+              <div class="form-group" v-if="buildConfig.os && buildConfig.os.family === 'debian'">
+                <label class="form-label">Autoinstall URL <span class="form-label-hint">(optional)</span></label>
+                <input
+                  class="form-input"
+                  v-model="buildConfig.autoinstall_url"
+                  placeholder="http://..."
+                >
+                <div class="form-help">Custom autoinstall config URL</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Additional Packages <span class="form-label-hint">(optional)</span></label>
+                <input
+                  class="form-input"
+                  v-model="buildConfig.custom_packages"
+                  placeholder="vim,htop,net-tools"
+                >
+                <div class="form-help">Comma-separated list</div>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:24px; flex-wrap:wrap; margin-top:8px;">
+              <label class="form-check">
+                <input type="checkbox" v-model="buildConfig.include_drivers">
+                Include extra drivers
+              </label>
+              <label class="form-check">
+                <input type="checkbox" v-model="buildConfig.include_firmware">
+                Include firmware updates
+              </label>
+              <label class="form-check">
+                <input type="checkbox" v-model="buildConfig.pxe_boot">
+                Enable PXE boot menu
+              </label>
+              <label class="form-check" v-if="buildConfig.os && buildConfig.os.family !== 'windows'">
+                <input type="checkbox" v-model="buildConfig.uefi_only">
+                UEFI only (skip BIOS)
+              </label>
+            </div>
+          </div>
+
+          <!-- Step 3: Review -->
+          <div v-if="buildStep === 3" class="wizard-body">
+            <h3 style="margin-bottom:16px;">Review Build Configuration</h3>
+            <div class="review-list">
+              <div class="review-item">
+                <span class="review-label">Operating System</span>
+                <span class="review-value">{{ buildConfig.os ? buildConfig.os.name + ' ' + buildConfig.os.version : '-' }}</span>
+              </div>
+              <div class="review-item">
+                <span class="review-label">Architecture</span>
+                <span class="review-value">{{ buildConfig.os ? buildConfig.os.arch.join(', ') : '-' }}</span>
+              </div>
+              <div class="review-item">
+                <span class="review-label">Media Type</span>
+                <span class="review-value">{{ buildConfig.media || '-' }}</span>
+              </div>
+              <div class="review-item" v-if="buildConfig.label">
+                <span class="review-label">Build Label</span>
+                <span class="review-value">{{ buildConfig.label }}</span>
+              </div>
+              <div class="review-item">
+                <span class="review-label">Default Hostname</span>
+                <span class="review-value">{{ buildConfig.hostname }}</span>
+              </div>
+              <div class="review-item">
+                <span class="review-label">Extra Drivers</span>
+                <span class="review-value">{{ buildConfig.include_drivers ? 'Yes' : 'No' }}</span>
+              </div>
+              <div class="review-item">
+                <span class="review-label">Firmware Updates</span>
+                <span class="review-value">{{ buildConfig.include_firmware ? 'Yes' : 'No' }}</span>
+              </div>
+              <div class="review-item">
+                <span class="review-label">PXE Boot Menu</span>
+                <span class="review-value">{{ buildConfig.pxe_boot ? 'Enabled' : 'Disabled' }}</span>
+              </div>
+              <div class="review-item" v-if="buildConfig.custom_packages">
+                <span class="review-label">Additional Packages</span>
+                <span class="review-value text-sm">{{ buildConfig.custom_packages }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 4: Build Progress -->
+          <div v-if="buildStep === 4" class="wizard-body" style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:280px;">
+
+            <!-- Running -->
+            <template v-if="buildProgress.status === 'running' || buildProgress.status === 'pending'">
+              <div class="loading-spinner" style="margin-bottom:20px;">
+                <svg viewBox="0 0 24 24" width="48" height="48" stroke="var(--color-primary)" fill="none" stroke-width="2" stroke-linecap="round"><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+              </div>
+              <div style="width:100%; max-width:460px;">
+                <div class="progress-bar progress-bar-lg">
+                  <div class="progress-bar-fill" :style="{ width: buildProgress.percent + '%' }"></div>
+                </div>
+                <div class="progress-text">{{ buildProgress.percent }}%</div>
+                <p class="text-center text-muted text-sm mt-1">{{ buildProgress.message }}</p>
+              </div>
+            </template>
+
+            <!-- Completed -->
+            <template v-if="buildProgress.status === 'completed'">
+              <div style="color:var(--color-success); margin-bottom:16px;" v-html="ICONS.checkCircle" class="loading-spinner">
+              </div>
+              <h3 style="margin-bottom:6px; color:var(--color-success);">Build Complete</h3>
+              <p class="text-muted text-sm mb-2">
+                {{ buildConfig.os ? buildConfig.os.name + ' ' + buildConfig.os.version : '' }} {{ buildConfig.media }} has been built successfully.
+              </p>
+              <div class="btn-group mt-2">
+                <button class="btn btn-primary" @click="buildProgress.id && downloadBuild({ id: buildProgress.id })">
+                  <span v-html="ICONS.download"></span> Download
+                </button>
+                <button class="btn btn-secondary" @click="resetBuild">
+                  New Build
+                </button>
+              </div>
+            </template>
+
+            <!-- Failed -->
+            <template v-if="buildProgress.status === 'failed'">
+              <div style="color:var(--color-danger); margin-bottom:16px;" v-html="ICONS.xCircle" class="loading-spinner">
+              </div>
+              <h3 style="margin-bottom:6px; color:var(--color-danger);">Build Failed</h3>
+              <p class="text-muted text-sm mb-2">{{ buildProgress.error }}</p>
+              <div class="btn-group mt-2">
+                <button class="btn btn-primary" @click="startBuild">
+                  Retry
+                </button>
+                <button class="btn btn-secondary" @click="resetBuild">
+                  Start Over
+                </button>
+              </div>
+            </template>
+          </div>
+
+          <!-- Wizard Footer -->
+          <div v-if="buildStep < 4" class="wizard-footer">
+            <button
+              class="btn btn-secondary"
+              :disabled="buildStep === 0"
+              @click="prevBuildStep"
+            >
+              <span v-html="ICONS.arrowLeft"></span> Back
+            </button>
+            <div>
+              <button
+                v-if="buildStep < 3"
+                class="btn btn-primary"
+                @click="nextBuildStep"
+              >
+                Next <span v-html="ICONS.arrowRight"></span>
+              </button>
+              <button
+                v-if="buildStep === 3"
+                class="btn btn-success btn-lg"
+                @click="startBuild"
+              >
+                <span v-html="ICONS.play"></span> Start Build
+              </button>
+            </div>
+          </div>
+        </template>
+
+        <!-- =============================================
+             UPDATES
+             ============================================= -->
+        <template v-if="currentRoute === 'updates'">
+
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">Update Center</h2>
+              <p class="section-description">
+                Manage PXE boot component versions.
+                <template v-if="updData.last_checked">
+                  Last checked: {{ formatDate(updData.last_checked) }}
+                </template>
+              </p>
+            </div>
+            <div class="btn-group">
+              <button
+                class="btn btn-primary"
+                :disabled="updChecking"
+                @click="checkUpdates"
+              >
+                <span v-if="updChecking" class="loading-spinner" v-html="ICONS.spinner" style="width:16px; height:16px;"></span>
+                <span v-else v-html="ICONS.refresh"></span>
+                {{ updChecking ? 'Checking...' : 'Check for Updates' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Summary -->
+          <div class="stat-grid mb-2" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+            <div class="stat-card">
+              <div class="stat-icon green" v-html="ICONS.checkCircle"></div>
+              <div class="stat-info">
+                <div class="stat-label">Up to Date</div>
+                <div class="stat-value">{{ updData.components.filter(c => c.status === 'up-to-date').length }}</div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon orange" v-html="ICONS.alertCircle"></div>
+              <div class="stat-info">
+                <div class="stat-label">Updates Available</div>
+                <div class="stat-value">{{ updatesAvailable }}</div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon blue" v-html="ICONS.package"></div>
+              <div class="stat-info">
+                <div class="stat-label">Total Components</div>
+                <div class="stat-value">{{ updData.components.length }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Loading -->
+          <div v-if="updLoading" class="loading-page">
+            <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/></svg>
+            <span>Loading components...</span>
+          </div>
+
+          <!-- Components Table -->
+          <div v-else class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Component</th>
+                  <th>Current Version</th>
+                  <th></th>
+                  <th>Latest Version</th>
+                  <th>Status</th>
+                  <th style="width:120px;">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="comp in updData.components" :key="comp.name">
+                  <td class="font-medium">{{ comp.name }}</td>
+                  <td><span class="text-mono text-sm update-current">{{ comp.current }}</span></td>
+                  <td class="text-center text-faint update-arrow">
+                    <span v-html="ICONS.arrowRight" style="width:14px; height:14px; display:inline-block; vertical-align:middle;"></span>
+                  </td>
+                  <td>
+                    <span
+                      class="text-mono text-sm update-latest"
+                      :class="{ 'text-success': comp.status === 'update-available' }"
+                    >{{ comp.latest }}</span>
+                  </td>
+                  <td>
+                    <span class="badge" :class="statusBadgeClass(comp.status)">
+                      <span class="badge-dot"></span>
+                      {{ comp.status === 'up-to-date' ? 'Up to date' : 'Update available' }}
+                    </span>
+                  </td>
+                  <td>
+                    <button
+                      v-if="comp.status === 'update-available'"
+                      class="btn btn-sm btn-primary"
+                      :disabled="updApplying === comp.name"
+                      @click="applyUpdate(comp)"
+                    >
+                      <span v-if="updApplying === comp.name" class="loading-spinner" v-html="ICONS.spinner" style="width:14px; height:14px;"></span>
+                      {{ updApplying === comp.name ? 'Updating...' : 'Update' }}
+                    </button>
+                    <span v-else class="text-sm text-faint">--</span>
+                  </td>
+                </tr>
+                <tr v-if="!updData.components.length">
+                  <td colspan="6">
+                    <div class="empty-state">
+                      <span v-html="ICONS.package"></span>
+                      <div class="empty-state-title">No components</div>
+                      <div class="empty-state-text">Click "Check for Updates" to scan component versions.</div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
+
+        <!-- =============================================
+             HISTORY
+             ============================================= -->
+        <template v-if="currentRoute === 'history'">
+
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">Build History</h2>
+              <p class="section-description">
+                {{ histBuilds.length }} build{{ histBuilds.length !== 1 ? 's' : '' }} recorded
+              </p>
+            </div>
+            <div class="btn-group">
+              <button class="btn btn-secondary" @click="loadHistory()" :disabled="histLoading">
+                <span v-html="ICONS.refresh"></span> Refresh
+              </button>
+              <button class="btn btn-primary" @click="setRoute('build')">
+                <span v-html="ICONS.build"></span> New Build
+              </button>
+            </div>
+          </div>
+
+          <!-- Loading -->
+          <div v-if="histLoading" class="loading-page">
+            <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/></svg>
+            <span>Loading build history...</span>
+          </div>
+
+          <!-- Build History Table -->
+          <div v-else class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Operating System</th>
+                  <th>Media</th>
+                  <th>Status</th>
+                  <th>Date</th>
+                  <th>Duration</th>
+                  <th>Size</th>
+                  <th style="width:100px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="build in histBuilds" :key="build.id">
+                  <td><span class="text-mono text-sm">{{ build.id }}</span></td>
+                  <td class="font-medium">{{ build.os }}</td>
+                  <td>
+                    <span class="badge badge-info">{{ build.media }}</span>
+                  </td>
+                  <td>
+                    <span class="badge" :class="statusBadgeClass(build.status)">
+                      <span class="badge-dot"></span>
+                      {{ build.status }}
+                    </span>
+                  </td>
+                  <td class="text-muted text-sm">{{ formatDate(build.created_at) }}</td>
+                  <td class="text-mono text-sm">{{ formatDuration(build.duration) }}</td>
+                  <td class="text-mono text-sm">{{ build.size ? formatBytes(build.size) : '-' }}</td>
+                  <td>
+                    <div class="btn-group">
+                      <button
+                        v-if="build.status === 'completed'"
+                        class="btn btn-sm btn-icon btn-ghost"
+                        title="Download"
+                        @click="downloadBuild(build)"
+                      >
+                        <span v-html="ICONS.download"></span>
+                      </button>
+                      <button
+                        v-if="build.status === 'running'"
+                        class="btn btn-sm btn-icon btn-ghost text-danger"
+                        title="Cancel"
+                      >
+                        <span v-html="ICONS.x"></span>
+                      </button>
+                      <span v-if="build.status === 'failed'" class="text-sm text-danger truncate" style="max-width:120px;" :title="build.error">
+                        {{ build.error || 'Error' }}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="!histBuilds.length">
+                  <td colspan="8">
+                    <div class="empty-state">
+                      <span v-html="ICONS.history"></span>
+                      <div class="empty-state-title">No builds yet</div>
+                      <div class="empty-state-text">
+                        Start your first build to see it appear here.
+                      </div>
+                      <button class="btn btn-primary" @click="setRoute('build')">
+                        <span v-html="ICONS.build"></span> Start a Build
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
+
+      </div><!-- /page-content -->
+    </main>
+  </div><!-- /app-layout -->
+
+  <!-- ===== Toast Notifications ===== -->
+  <div class="toast-container">
+    <div
+      v-for="t in toasts"
+      :key="t.id"
+      class="toast"
+      :class="['toast-' + t.type, { removing: t.removing }]"
+    >
+      <div class="toast-icon">
+        <span v-if="t.type === 'success'" v-html="ICONS.checkCircle"></span>
+        <span v-else-if="t.type === 'error'" v-html="ICONS.xCircle"></span>
+        <span v-else-if="t.type === 'warning'" v-html="ICONS.alertCircle"></span>
+        <span v-else v-html="ICONS.info"></span>
+      </div>
+      <div class="toast-content">
+        <div class="toast-title">{{ t.title }}</div>
+        <div v-if="t.message" class="toast-message">{{ t.message }}</div>
+      </div>
+      <button class="toast-close" @click="removeToast(t.id)">
+        <span v-html="ICONS.x"></span>
+      </button>
+    </div>
+  </div>
+
+</div><!-- /#app -->
+
+<!-- Vue 3 CDN -->
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<!-- App -->
+<script src="/static/app.js"></script>
+
+</body>
+</html>

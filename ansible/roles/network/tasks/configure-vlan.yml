@@ -1,0 +1,28 @@
+---
+# network/tasks/configure-vlan.yml -- Configure a VLAN interface
+#
+# Called in a loop with 'vlan' variable containing:
+#   id, parent, ip, prefix, gateway
+
+# RedHat: use ifcfg files for VLAN
+- name: "Configure VLAN {{ vlan.id }} on {{ vlan.parent }} (RedHat)"
+  template:
+    src: ifcfg-vlan.j2
+    dest: "/etc/sysconfig/network-scripts/ifcfg-{{ vlan.parent }}.{{ vlan.id }}"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  vars:
+    vlan_id: "{{ vlan.id }}"
+    vlan_parent: "{{ vlan.parent }}"
+    ip_address: "{{ vlan.ip | default('') }}"
+    prefix: "{{ vlan.prefix | default(24) }}"
+    gateway: "{{ vlan.gateway | default('') }}"
+  when: ansible_os_family == "RedHat"
+
+# Debian: netplan handles VLAN config in the main netplan template
+- name: "Record VLAN {{ vlan.id }} for netplan (Debian)"
+  debug:
+    msg: "VLAN {{ vlan.id }} on {{ vlan.parent }} will be configured via netplan template"
+  when: ansible_os_family == "Debian"

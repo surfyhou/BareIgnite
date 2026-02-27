@@ -1,0 +1,17 @@
+version: '3.8'
+services:
+  forge:
+    build: .
+    container_name: bareignite-forge
+    ports:
+      - "${FORGE_PORT:-8000}:8000"
+    volumes:
+      - ./cache:/app/cache
+      - ./output:/app/output
+      - ./data:/app/data
+      - /dev:/dev:ro  # For USB/DVD device detection
+    environment:
+      - FORGE_CACHE_DIR=/app/cache
+      - FORGE_OUTPUT_DIR=/app/output
+    privileged: true  # Needed for device access and ISO creation
+    restart: unless-stopped

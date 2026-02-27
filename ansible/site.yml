@@ -1,0 +1,45 @@
+---
+# site.yml -- Master playbook for BareIgnite post-install configuration
+#
+# Usage:
+#   ansible-playbook -i <project>/generated/ansible/inventory.ini site.yml
+#   ansible-playbook -i <project>/generated/ansible/inventory.ini site.yml --tags network
+#   ansible-playbook -i <project>/generated/ansible/inventory.ini site.yml --tags security
+
+# Phase 1: Common baseline applied to all Linux servers
+- import_playbook: playbooks/common.yml
+
+# Phase 2: Network reconfiguration (data NICs, bonding, VLANs)
+- import_playbook: playbooks/network-reconfig.yml
+  tags:
+    - network
+
+# Phase 3: Security hardening
+- import_playbook: playbooks/security.yml
+  tags:
+    - security
+
+# Phase 4: Role-specific playbooks by server group
+- name: Database server preparation
+  hosts: database
+  tags:
+    - database
+    - role-specific
+  roles:
+    - database
+
+- name: Application server preparation
+  hosts: appserver
+  tags:
+    - appserver
+    - role-specific
+  roles:
+    - appserver
+
+- name: Hypervisor post-configuration
+  hosts: hypervisor
+  tags:
+    - hypervisor
+    - role-specific
+  roles:
+    - hypervisor

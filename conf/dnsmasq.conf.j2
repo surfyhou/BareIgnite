@@ -1,0 +1,61 @@
+# BareIgnite dnsmasq configuration
+# Generated from spec -- do not edit manually
+# {{ ansible_managed }}
+
+# === Interface binding ===
+interface={{ control_interface }}
+bind-interfaces
+
+# === DNS ===
+# Disable upstream DNS resolution (offline environment)
+no-resolv
+no-poll
+
+# Local domain
+local=/{{ domain }}/
+domain={{ domain }}
+
+# Control node DNS entry
+address=/control.{{ domain }}/{{ control_ip }}
+
+# === DHCP for IPMI / PXE network ===
+dhcp-range={{ dhcp_range_start }},{{ dhcp_range_end }},{{ netmask }},1h
+dhcp-option=option:router,{{ gateway }}
+dhcp-option=option:dns-server,{{ control_ip }}
+dhcp-option=option:domain-name,{{ domain }}
+
+# === Per-host static DHCP reservations ===
+# Each file in this directory defines a dhcp-host= entry
+dhcp-hostsdir={{ dhcp_hosts_dir }}
+
+# === TFTP server ===
+enable-tftp
+tftp-root={{ tftp_root }}
+
+# === PXE boot architecture detection (RFC 4578, option 93) ===
+
+# BIOS x86 (client-arch 0)
+dhcp-match=set:bios,option:client-arch,0
+dhcp-boot=tag:bios,bios/pxelinux.0
+
+# UEFI x86_64 (client-arch 7: EFI BC, 9: EFI x86-64)
+dhcp-match=set:efi-x86_64,option:client-arch,7
+dhcp-match=set:efi-x86_64-9,option:client-arch,9
+dhcp-boot=tag:efi-x86_64,efi64/shimx64.efi
+dhcp-boot=tag:efi-x86_64-9,efi64/shimx64.efi
+
+# ARM64 UEFI (client-arch 11: EFI ARM64)
+dhcp-match=set:efi-arm64,option:client-arch,11
+dhcp-boot=tag:efi-arm64,arm64/shimaa64.efi
+
+# === Logging ===
+log-dhcp
+log-queries
+log-facility={{ project_logs }}/dnsmasq.log
+
+# === Misc ===
+# Do not read /etc/hosts
+no-hosts
+
+# Do not forward DNS queries upstream
+bogus-priv

@@ -1,0 +1,148 @@
+#cloud-config
+autoinstall:
+  version: 1
+  locale: {{ locale | default('en_US.UTF-8') }}
+  keyboard:
+    layout: us
+    variant: ""
+  timezone: {{ timezone | default('UTC') }}
+
+  identity:
+    hostname: {{ hostname }}
+    password: "{{ root_password }}"
+    username: root
+
+  ssh:
+    install-server: true
+    authorized-keys: {{ ssh_keys | default([]) | to_json }}
+    allow-pw: true
+
+  network:
+    network:
+      version: 2
+      ethernets:
+{% if pxe_mac is defined and pxe_mac %}
+        pxe-nic:
+          match:
+            macaddress: "{{ pxe_mac }}"
+          dhcp4: true
+{% else %}
+        eth0:
+          dhcp4: true
+{% endif %}
+
+  # Ubuntu 24.04 storage -- supports extended layout options and guided with sizing-policy
+{% if partition_scheme is defined and partition_scheme == 'custom' and custom_disk_layout is defined and custom_disk_layout | length > 0 %}
+  storage:
+    config:
+      - id: disk0
+        type: disk
+        ptable: gpt
+        wipe: superblock-recursive
+        grub_device: true
+      - id: efi_part
+        type: partition
+        device: disk0
+        size: 512M
+        flag: boot
+        grub_device: true
+      - id: efi_fs
+        type: format
+        volume: efi_part
+        fstype: fat32
+      - id: efi_mount
+        type: mount
+        device: efi_fs
+        path: /boot/efi
+      - id: boot_part
+        type: partition
+        device: disk0
+        size: 1G
+      - id: boot_fs
+        type: format
+        volume: boot_part
+        fstype: ext4
+      - id: boot_mount
+        type: mount
+        device: boot_fs
+        path: /boot
+{% for part in custom_disk_layout %}
+      - id: part_{{ loop.index }}
+        type: partition
+        device: disk0
+{% if part.size == '100%FREE' %}
+        size: -1
+{% else %}
+        size: {{ part.size }}
+{% endif %}
+{% if part.fstype == 'swap' %}
+      - id: fmt_{{ loop.index }}
+        type: format
+        volume: part_{{ loop.index }}
+        fstype: swap
+      - id: mount_{{ loop.index }}
+        type: mount
+        device: fmt_{{ loop.index }}
+        path: ""
+{% else %}
+      - id: fmt_{{ loop.index }}
+        type: format
+        volume: part_{{ loop.index }}
+        fstype: {{ part.fstype | default('ext4') }}
+      - id: mount_{{ loop.index }}
+        type: mount
+        device: fmt_{{ loop.index }}
+        path: {{ part.mount }}
+{% endif %}
+{% endfor %}
+{% elif partition_scheme is defined and partition_scheme == 'database' %}
+  storage:
+    layout:
+      name: lvm
+      sizing-policy: scaled
+      match:
+        size: largest
+{% elif partition_scheme is defined and partition_scheme == 'storage' %}
+  storage:
+    layout:
+      name: lvm
+      sizing-policy: all
+{% else %}
+  storage:
+    layout:
+      name: lvm
+{% endif %}
+
+  packages:
+{% for pkg in (packages | default(['openssh-server', 'curl', 'vim', 'wget'])) %}
+    - {{ pkg }}
+{% endfor %}
+
+  # Ubuntu 24.04 supports codecs and drivers sections
+  codecs:
+    install: false
+  drivers:
+    install: false
+
+  user-data:
+    timezone: {{ timezone | default('UTC') }}
+{% if ntp_servers is defined and ntp_servers | length > 0 %}
+    ntp:
+      enabled: true
+      servers:
+{% for s in ntp_servers %}
+        - {{ s }}
+{% endfor %}
+{% endif %}
+
+  late-commands:
+    - curtin in-target --target=/target -- bash -c 'mkdir -p /root/.ssh && chmod 700 /root/.ssh'
+{% for key in (ssh_keys | default([])) %}
+    - curtin in-target --target=/target -- bash -c 'echo "{{ key }}" >> /root/.ssh/authorized_keys'
+{% endfor %}
+    - curtin in-target --target=/target -- bash -c 'chmod 600 /root/.ssh/authorized_keys 2>/dev/null || true'
+    - curtin in-target --target=/target -- bash -c 'sed -i "s/^#\?PermitRootLogin.*/PermitRootLogin yes/" /etc/ssh/sshd_config'
+{% if nameservers is defined and nameservers | length > 0 %}
+    - curtin in-target --target=/target -- bash -c 'echo "nameserver {{ nameservers[0] }}" > /etc/resolv.conf'
+{% endif %}
+    - curtin in-target --target=/target -- bash -c 'curl -s "http://{{ control_ip }}:{{ callback_port }}/callback?server={{ hostname }}&status=success" || true'
